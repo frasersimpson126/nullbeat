@@ -33,9 +33,8 @@ function splitUrl(url) {
   q = value.indexOf('?');
   var query = q >= 0 ? value.substring(q + 1) : '';
   var path = q >= 0 ? value.substring(0, q) : value;
+  path = path.replace(/\/manifest\.json$/i, '').replace(/\/manifest$/i, '');
   path = path.replace(/\/+$/, '');
-  if (/\/manifest\.json$/i.test(path)) path = path.substring(0, path.length - 13);
-  else if (/\/manifest$/i.test(path)) path = path.substring(0, path.length - 9);
   return { base: path, query: query };
 }
 
