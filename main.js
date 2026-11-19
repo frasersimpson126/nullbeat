@@ -67,7 +67,7 @@ function getManifest(url, forceRefresh) {
   if (!forceRefresh && manifestCache && manifestCacheUrl === url && Date.now() - manifestCacheAt < 300000) {
     return manifestCache;
   }
-  var r = requestJson(url, 2500);
+  var r = requestJson(url, 1500);
   if (r.status !== 200 || !r.data || typeof r.data !== 'object') {
     throw new Error('Manifest request failed (HTTP ' + r.status + '). Check the URL and token.');
   }
@@ -123,7 +123,7 @@ function trackArrays(data) {
 function resolveTrack(track, url, manifest) {
   var isrc = cleanText(track.isrc);
   if (isrc && resource(manifest, 'isrc')) {
-    var ir = requestJson(endpoint(url, '/resolve-isrc', { isrc: isrc }), 3000);
+    var ir = requestJson(endpoint(url, '/resolve-isrc', { isrc: isrc }), 1500);
     if (ir.status === 200 && ir.data) {
       var resolvedId = cleanText(ir.data.trackId || ir.data.id);
       if (resolvedId) return { id: resolvedId, isrcMatched: true, candidate: null };
@@ -148,7 +148,7 @@ function resolveTrack(track, url, manifest) {
 
   var query = cleanText((track.artist || '') + ' ' + (track.title || ''));
   if (!query) return null;
-  var sr = requestJson(endpoint(url, '/search', { q: query }), 4500);
+  var sr = requestJson(endpoint(url, '/search', { q: query }), 2000);
   if (sr.status !== 200 || !sr.data) return null;
 
   var items = trackArrays(sr.data);
@@ -182,7 +182,7 @@ function resolveStream(track, isDownload) {
 
   var streamPath = '/stream/' + encodeURIComponent(match.id);
   var streamUrl = endpoint(url, streamPath, isDownload ? { download: 'true' } : null);
-  var sr = requestJson(streamUrl, isDownload ? 16000 : 5500);
+  var sr = requestJson(streamUrl, isDownload ? 25000 : 11000);
   if (sr.status === 401 || sr.status === 403) {
     if (feature('results')) return { outcome: 'sign-in', detail: 'Check the NullBeat manifest URL and access token in settings.' };
     return null;
