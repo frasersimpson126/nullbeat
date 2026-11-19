@@ -198,6 +198,28 @@ function chooseCandidate(track, items) {
   return pool.length ? pool[0] : null;
 }
 
+function sameArtistAndTitle(track, candidate) {
+  if (!candidate || !candidate.id) return false;
+  var wantedTitle = normalize(track.title);
+  var foundTitle = normalize(candidate.title);
+  if (!wantedTitle || wantedTitle !== foundTitle) return false;
+
+  var wantedArtist = normalize(track.artist || (track.artists && track.artists[0]));
+  var foundArtist = normalize(candidate.artist || (candidate.artists && candidate.artists[0]));
+  return !!wantedArtist && wantedArtist === foundArtist;
+}
+
+function chooseArtistTitleCandidate(track, items) {
+  var matches = [];
+  for (var i = 0; i < items.length; i++) {
+    if (sameArtistAndTitle(track, items[i])) matches.push(items[i]);
+  }
+  for (var j = 0; j < matches.length; j++) {
+    if (candidateIsCached(matches[j])) return matches[j];
+  }
+  return matches.length ? matches[0] : null;
+}
+
 function trackArrays(data) {
   if (!data || typeof data !== 'object') return [];
   if (Array.isArray(data.tracks)) return data.tracks;
@@ -225,11 +247,17 @@ function resolveTrack(track, url, manifest, isDownload) {
   if (query && resource(manifest, 'search')) {
     var sr = requestJson(endpoint(url, '/search', {
       q: query,
-      limit: isDownload ? 10 : 5,
+      limit: isDownload ? 20 : 10,
       type: 'track'
     }), isDownload ? 2200 : 1000);
     if (sr.status === 200 && sr.data) {
-      var match = chooseCandidate(track, trackArrays(sr.data));
+      var items = trackArrays(sr.data);
+      var match = chooseCandidate(track, items);
+      // If exact ISRC/title/artist/duration matching fails, accept an exact
+      // artist + title match as a fallback. This tolerates duration metadata
+      // differences and alternate catalogue entries while preserving exact
+      // matches as the first choice.
+      if (!match) match = chooseArtistTitleCandidate(track, items);
       if (match) {
         return {
           id: String(match.id),
