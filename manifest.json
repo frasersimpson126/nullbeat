@@ -1,11 +1,11 @@
 {
   "id": "io.github.frasersimpson126.nullbeat",
   "name": "NullBeat for Orpheon",
-  "version": "1.0.4",
-  "versionCode": 5,
+  "version": "1.0.5",
+  "versionCode": 6,
   "apiVersion": 1,
   "author": "Fraser Simpson",
-  "description": "Streams and downloads through NullBeat, prefers cached matches, and resolves the next queue track ahead of playback.",
+  "description": "Streams and downloads through NullBeat, with cache-aware matching, queue preparation and persistent playback statistics.",
   "homepage": "https://github.com/frasersimpson126/nullbeat",
   "category": "playback",
   "tags": [
@@ -42,6 +42,10 @@
     {
       "name": "notify",
       "why": "Shows connection-test results and actionable setup errors in Orpheon."
+    },
+    {
+      "name": "storage",
+      "why": "Saves playback statistics between app sessions."
     }
   ],
   "settings": [
@@ -56,6 +60,18 @@
       "type": "button",
       "label": "Test NullBeat connection",
       "description": "Checks the manifest and performs a small sample search."
+    },
+    {
+      "key": "show_stats",
+      "type": "button",
+      "label": "View playback statistics",
+      "description": "Shows total plays, NullBeat streams and downloads, completed tracks, skips and listening time."
+    },
+    {
+      "key": "reset_stats",
+      "type": "button",
+      "label": "Reset playback statistics",
+      "description": "Permanently resets the statistics stored by this extension."
     }
   ],
   "welcome": {
@@ -66,5 +82,5 @@
       "Press Test NullBeat connection, then play or download a track."
     ]
   },
-  "changelog": "1.0.4: Log Orpheon's ahead request immediately when the hook receives it, so diagnostics distinguish no ahead callback from a NullBeat resolution timeout. 1.0.3: Resolve the next queue track ahead of playback."
+  "changelog": "1.0.5: Add persistent playback statistics and controls to view or reset them. 1.0.4: Log Orpheon's ahead request immediately when the hook receives it."
 }
