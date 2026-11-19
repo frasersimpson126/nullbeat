@@ -19,7 +19,6 @@ function emptyStats() {
     plays: 0,
     streamPlays: 0,
     downloadPlays: 0,
-    otherPlays: 0,
     completed: 0,
     skipped: 0,
     playedMs: 0,
@@ -453,6 +452,7 @@ myspoti.on('playback', function (event) {
   var ownStream = event.origin === 'audio-source' && event.providerId === myspoti.extension.id;
 
   if (event.type === 'start') {
+    if (!ownStream && !ownDownload) return;
     var stats = getStats();
     stats.plays += 1;
     stats.lastPlayedAt = Number(event.timestamp) || Date.now();
@@ -462,8 +462,6 @@ myspoti.on('playback', function (event) {
     } else if (ownDownload) {
       stats.downloadPlays += 1;
       myspoti.log('Playback origin: downloaded NullBeat track.');
-    } else {
-      stats.otherPlays += 1;
     }
     saveStats();
     return;
