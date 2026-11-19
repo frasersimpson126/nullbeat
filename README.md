@@ -31,6 +31,10 @@ The URL field is a secret setting and is not written to logs. The extension keep
 
 NullBeat can report cache state in search-result `infotext` badges (for example, `⚡ Cached - HiFi CD - 123MB`) and in stream responses (a title containing `Torbox Cached`, an `infohash`, or a `cached` flag). The extension surfaces these indicators when present. It does not claim to know whether an arbitrary track is cached before requesting its stream. Orpheon playback events also expose whether the current audio origin is a stream, a download, or a local file.
 
+## First-play delay
+
+NullBeat documents that a new cache fill can take around 15–20 seconds. Orpheon's audio-source hook has a 15-second budget, so an uncached first attempt may fall back before NullBeat finishes preparing it. If that happens, retry the same track after about 20 seconds; subsequent playback should benefit from the prepared cache. Downloads have a longer Orpheon hook budget.
+
 ## Compatibility
 
 - Requires a public HTTPS Eclipse-compatible NullBeat manifest URL. Orpheon's extension HTTP client does not follow redirects or send browser cookies.
