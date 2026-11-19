@@ -397,7 +397,6 @@ function downloadAnswer(track) {
     return [{
       url: result.url,
       format: result.format,
-      provider: 'NullBeat',
       bitDepth: result.bitDepth,
       sampleRate: result.sampleRate,
       sizeHint: result.sizeHint,
