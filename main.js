@@ -296,7 +296,10 @@ function cacheLabel(result) {
 
 function audioAnswer(track) {
   try {
-    var result = resolveStream(track, false, track && track.ahead === true);
+    var isAhead = !!(track && track.ahead === true);
+    // Log on entry so the diagnostic still appears if NullBeat resolution later times out.
+    if (isAhead) myspoti.log('NullBeat received an Orpheon ahead request for ' + cleanText(track.title).substring(0, 80) + '.');
+    var result = resolveStream(track, false, isAhead);
     if (!result) {
       if (track && track.ahead === true) myspoti.log('NullBeat queue pre-resolution did not complete; playback will resolve the track normally.');
       return null;
