@@ -1,8 +1,8 @@
 {
   "id": "io.github.frasersimpson126.nullbeat",
   "name": "NullBeat for Orpheon",
-  "version": "1.0.3",
-  "versionCode": 4,
+  "version": "1.0.4",
+  "versionCode": 5,
   "apiVersion": 1,
   "author": "Fraser Simpson",
   "description": "Streams and downloads through NullBeat, prefers cached matches, and resolves the next queue track ahead of playback.",
@@ -66,5 +66,5 @@
       "Press Test NullBeat connection, then play or download a track."
     ]
   },
-  "changelog": "1.0.3: Use Orpheon\u0027s ahead-of-time audio request to resolve the next queue track early and give NullBeat time to prepare its cache."
+  "changelog": "1.0.4: Log Orpheon's ahead request immediately when the hook receives it, so diagnostics distinguish no ahead callback from a NullBeat resolution timeout. 1.0.3: Resolve the next queue track ahead of playback."
 }
