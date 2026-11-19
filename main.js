@@ -199,7 +199,7 @@ function resolveTrack(track, url, manifest, isDownload) {
   return null;
 }
 
-function resolveStream(track, isDownload) {
+function resolveStream(track, isDownload, isAhead) {
   var url = manifestUrl();
   var manifest = getManifest(url, false);
   if (!resource(manifest, 'stream')) return null;
@@ -211,10 +211,13 @@ function resolveStream(track, isDownload) {
   // NullBeat has one stream resolver for both playback and downloads. The quality
   // is encoded in the generated manifest URL; do not append a quality override.
   var streamUrl = endpoint(url, streamPath, null);
-  // Two bounded attempts keep playback within Orpheon's 15-second hook budget.
-  var attemptTimeout = isDownload ? 9000 : 4800;
+  // Orpheon asks for the next queue track about 10 seconds before it plays.
+  // Use that ahead window to let NullBeat begin resolving/filling its cache.
+  // Keep the total inside the 15-second audio hook budget.
+  var attemptTimeout = isAhead ? 12000 : (isDownload ? 9000 : 4800);
+  var maxAttempts = isAhead ? 1 : 2;
   var sr = { status: 0, data: null, headers: {} };
-  for (var attempt = 0; attempt < 2; attempt++) {
+  for (var attempt = 0; attempt < maxAttempts; attempt++) {
     try {
       sr = requestJson(streamUrl, attemptTimeout);
     } catch (streamError) {
@@ -227,7 +230,7 @@ function resolveStream(track, isDownload) {
       sr.status === 503 || sr.status === 504 ||
       (sr.status === 200 && (!sr.data || typeof sr.data.url !== 'string' ||
         !/^https:\/\//i.test(cleanText(sr.data.url))));
-    if (!retryable || attempt === 1) break;
+    if (!retryable || attempt === maxAttempts - 1) break;
   }
   if (sr.status === 401 || sr.status === 403) {
     if (feature('results')) return { outcome: 'sign-in', detail: 'Check the NullBeat manifest URL and access token in settings.' };
@@ -293,9 +296,13 @@ function cacheLabel(result) {
 
 function audioAnswer(track) {
   try {
-    var result = resolveStream(track, false);
-    if (!result) return null;
+    var result = resolveStream(track, false, track && track.ahead === true);
+    if (!result) {
+      if (track && track.ahead === true) myspoti.log('NullBeat queue pre-resolution did not complete; playback will resolve the track normally.');
+      return null;
+    }
     if (result.outcome) return result;
+    if (track && track.ahead === true) myspoti.log('NullBeat prepared the next queue track ahead of playback.');
     var answer = {
       url: result.url,
       source: cacheLabel(result),
