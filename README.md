@@ -12,7 +12,7 @@ An Orpheon / Myspoti extension that uses one configured Eclipse-compatible NullB
 - Connection test checks the manifest and sample search endpoint.
 - Playback origin diagnostics distinguish NullBeat streams from downloaded tracks.
 - Cache-aware matching: playback inspects up to five search results and prefers a cached exact ISRC match, then a cached strict title/artist match. Downloads inspect up to ten results. Uncached exact matches remain a fallback.
-- Queue pre-resolution: uses Orpheon's `audio.ahead` request for the next queue track (normally about 10 seconds after the current song starts) to resolve its NullBeat stream before playback. The ahead request gets one longer, bounded stream-resolution attempt; normal playback retains its two-attempt retry.
+- Queue pre-resolution: uses Orpheon's `audio.ahead` request for the next queue track (normally about 10 seconds after the current song starts) to resolve its NullBeat stream before playback. The extension log now records receipt of the ahead request immediately, before any network work, so a missing log means Orpheon did not invoke the ahead hook for that track. The ahead request gets one longer, bounded stream-resolution attempt; normal playback retains its two-attempt retry.
 - Bounded stream retry: retries one transient stream-resolution failure (network error, rate limit, selected server errors, or an unusable response) without retrying authentication or permanent client errors.
 - Cache visibility: uses NullBeat's `infotext` cache badge from search results and the stream response's `Torbox Cached`, `infohash`, or `cached` fields. Download file size is passed to Orpheon when NullBeat reports it.
 
