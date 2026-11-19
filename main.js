@@ -119,7 +119,7 @@ function trackArrays(data) {
   return [];
 }
 
-function resolveTrack(track, url, manifest) {
+function resolveTrack(track, url, manifest, isDownload) {
   var isrc = cleanText(track.isrc);
   if (isrc && resource(manifest, 'isrc')) {
     var ir = requestJson(endpoint(url, '/resolve-isrc', { isrc: isrc }), 1000);
@@ -176,7 +176,7 @@ function resolveStream(track, isDownload) {
   var manifest = getManifest(url, false);
   if (!resource(manifest, 'stream')) return null;
 
-  var match = resolveTrack(track, url, manifest);
+  var match = resolveTrack(track, url, manifest, isDownload);
   if (!match) return null;
 
   var streamPath = '/stream/' + encodeURIComponent(match.id);
