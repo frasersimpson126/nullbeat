@@ -11,6 +11,8 @@ An Orpheon / Myspoti extension that uses one configured Eclipse-compatible NullB
 - Direct stream URLs are used when present in search results only if they are still returned by the stream endpoint; the stream endpoint remains the final resolver.
 - Connection test checks the manifest and sample search endpoint.
 - Playback origin diagnostics distinguish NullBeat streams from downloaded tracks.
+- Cache-aware matching: playback inspects up to five search results and prefers a cached exact ISRC match, then a cached strict title/artist match. Downloads inspect up to ten results. Uncached exact matches remain a fallback.
+- Bounded stream retry: retries one transient stream-resolution failure (network error, rate limit, selected server errors, or an unusable response) without retrying authentication or permanent client errors.
 - Cache visibility: uses NullBeat's `infotext` cache badge from search results and the stream response's `Torbox Cached`, `infohash`, or `cached` fields. Download file size is passed to Orpheon when NullBeat reports it.
 
 ## Quality
@@ -33,14 +35,14 @@ NullBeat can report cache state in search-result `infotext` badges (for example,
 
 ## First-play delay
 
-NullBeat documents that a new cache fill can take around 15–20 seconds. Orpheon's audio-source hook has a 15-second budget, so an uncached first attempt may fall back before NullBeat finishes preparing it. If that happens, retry the same track after about 20 seconds; subsequent playback should benefit from the prepared cache. Downloads have a longer Orpheon hook budget.
+NullBeat documents that a new cache fill can take around 15–20 seconds. Orpheon's audio-source hook has a 15-second budget, so an uncached first attempt may fall back before NullBeat finishes preparing it. The extension retries transient stream failures once automatically. This retry is bounded by Orpheon's hook deadline; it cannot wait out a full 15–20 second first-time cache fill. If NullBeat is still preparing a new cache, retry the track after about 20 seconds. Downloads have a longer Orpheon hook budget.
 
 ## Compatibility
 
 - Requires a public HTTPS Eclipse-compatible NullBeat manifest URL. Orpheon's extension HTTP client does not follow redirects or send browser cookies.
 - Supports direct HTTPS audio URLs in FLAC, M4A/MP4, AAC (mapped to M4A), and MP3 formats. Dolby Atmos is passed through as M4A with its reported codec metadata.
 - HLS/DASH manifests and redirect-only stream URLs are not passed through. NullBeat's public `/stream` endpoint is expected to return a JSON object containing a direct `url`.
-- Playback searches only the top result to keep the 15-second audio hook within budget; downloads search up to 10 results and require an exact ISRC or strict title/artist match.
+- Playback inspects up to five results and downloads up to ten, preferring cached results only among exact ISRC or strict title/artist matches. Playback stream resolution makes at most two bounded attempts to remain within Orpheon's 15-second audio hook budget.
 - Matching is deliberately strict to avoid playing a different recording.
 - Spotify scrobbling is left to Orpheon's built-in Spotify mirroring option; this extension does not implement a second scrobbling path.
 
