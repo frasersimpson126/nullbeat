@@ -239,7 +239,7 @@ function resolveStream(track, isDownload) {
 }
 
 function cacheLabel(result) {
-  if (result.cacheText) return 'NullBeat · ' + result.cacheText.replace(/\\s+/g, ' ').substring(0, 70);
+  if (result.cacheText) return 'NullBeat · ' + result.cacheText.replace(/\s+/g, ' ').substring(0, 70);
   if (result.cached) return 'NullBeat · TorBox cached' + (result.quality ? ' · ' + result.quality : '');
   if (result.quality) return 'NullBeat · ' + result.quality;
   if (result.title) return 'NullBeat · ' + result.title.replace(/\s+/g, ' ').substring(0, 55);
