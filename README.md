@@ -12,6 +12,7 @@ An Orpheon / Myspoti extension that uses one configured Eclipse-compatible NullB
 - Connection test checks the manifest and sample search endpoint.
 - Playback origin diagnostics distinguish NullBeat streams from downloaded tracks.
 - Cache-aware matching: playback inspects up to five search results and prefers a cached exact ISRC match, then a cached strict title/artist match. Downloads inspect up to ten results. Uncached exact matches remain a fallback.
+- Queue pre-resolution: uses Orpheon's `audio.ahead` request for the next queue track (normally about 10 seconds after the current song starts) to resolve its NullBeat stream before playback. The ahead request gets one longer, bounded stream-resolution attempt; normal playback retains its two-attempt retry.
 - Bounded stream retry: retries one transient stream-resolution failure (network error, rate limit, selected server errors, or an unusable response) without retrying authentication or permanent client errors.
 - Cache visibility: uses NullBeat's `infotext` cache badge from search results and the stream response's `Torbox Cached`, `infohash`, or `cached` fields. Download file size is passed to Orpheon when NullBeat reports it.
 
@@ -29,6 +30,10 @@ NullBeat controls quality. This extension intentionally has **no quality selecto
 
 The URL field is a secret setting and is not written to logs. The extension keeps the token path intact for every endpoint request. NullBeat's configured quality is encoded in that token; the extension deliberately does not append a `quality` override or add another quality setting. The extension requests the configured host over HTTPS. The extension's network permission is broad because a self-hosted NullBeat instance can use a custom domain; install only if you trust the URL you enter.
 
+## Queue preparation and cache behaviour
+
+Orpheon does not expose the complete upcoming queue to extensions. Instead, it asks the active audio source for the next track ahead of time, marked `ahead: true`, usually around 10 seconds after the current track starts. This extension uses that request to resolve the next track through NullBeat early, giving NullBeat an opportunity to start or complete its own TorBox cache preparation. It prepares one next track at a time; it does not fetch the whole queue or download audio files in advance. The ahead request is limited to one longer attempt to stay within Orpheon's 15-second hook budget. If NullBeat has not finished preparing the track, normal playback will resolve it again. Whether the track is actually cached remains controlled by NullBeat/TorBox and is only reported when the service supplies cache indicators.
+
 ## Cache reporting limitation
 
 NullBeat can report cache state in search-result `infotext` badges (for example, `⚡ Cached - HiFi CD - 123MB`) and in stream responses (a title containing `Torbox Cached`, an `infohash`, or a `cached` flag). The extension surfaces these indicators when present. It does not claim to know whether an arbitrary track is cached before requesting its stream. Orpheon playback events also expose whether the current audio origin is a stream, a download, or a local file.
@@ -42,7 +47,7 @@ NullBeat documents that a new cache fill can take around 15–20 seconds. Orpheo
 - Requires a public HTTPS Eclipse-compatible NullBeat manifest URL. Orpheon's extension HTTP client does not follow redirects or send browser cookies.
 - Supports direct HTTPS audio URLs in FLAC, M4A/MP4, AAC (mapped to M4A), and MP3 formats. Dolby Atmos is passed through as M4A with its reported codec metadata.
 - HLS/DASH manifests and redirect-only stream URLs are not passed through. NullBeat's public `/stream` endpoint is expected to return a JSON object containing a direct `url`.
-- Playback inspects up to five results and downloads up to ten, preferring cached results only among exact ISRC or strict title/artist matches. Playback stream resolution makes at most two bounded attempts to remain within Orpheon's 15-second audio hook budget.
+- Playback inspects up to five results and downloads up to ten, preferring cached results only among exact ISRC or strict title/artist matches. Normal playback makes at most two bounded stream-resolution attempts; an ahead-of-time queue request makes one longer attempt within the 15-second audio hook budget.
 - Matching is deliberately strict to avoid playing a different recording.
 - Spotify scrobbling is left to Orpheon's built-in Spotify mirroring option; this extension does not implement a second scrobbling path.
 
