@@ -109,6 +109,32 @@ function sameRecording(track, candidate) {
   return true;
 }
 
+function candidateIsCached(candidate) {
+  if (!candidate) return false;
+  var text = cleanText(candidate.infotext);
+  return !!candidate.cached || /cached|cache hit/i.test(text) || !!candidate.infohash;
+}
+
+function chooseCandidate(track, items) {
+  var exactIsrc = [];
+  var exactIdentity = [];
+  var wantedIsrc = cleanText(track.isrc).toUpperCase();
+  for (var i = 0; i < items.length; i++) {
+    var item = items[i];
+    if (!item || !item.id) continue;
+    if (wantedIsrc && cleanText(item.isrc).toUpperCase() === wantedIsrc) {
+      exactIsrc.push(item);
+    } else if (sameRecording(track, item)) {
+      exactIdentity.push(item);
+    }
+  }
+  var pool = exactIsrc.length ? exactIsrc : exactIdentity;
+  for (var j = 0; j < pool.length; j++) {
+    if (candidateIsCached(pool[j])) return pool[j];
+  }
+  return pool.length ? pool[0] : null;
+}
+
 function trackArrays(data) {
   if (!data || typeof data !== 'object') return [];
   if (Array.isArray(data.tracks)) return data.tracks;
@@ -118,14 +144,41 @@ function trackArrays(data) {
   return [];
 }
 
+
 function resolveTrack(track, url, manifest, isDownload) {
   var isrc = cleanText(track.isrc);
+  var resolvedIsrcId = '';
+
   if (isrc && resource(manifest, 'isrc')) {
-    var ir = requestJson(endpoint(url, '/resolve-isrc', { isrc: isrc }), 1000);
+    var ir = requestJson(endpoint(url, '/resolve-isrc', { isrc: isrc }), 900);
     if (ir.status === 200 && ir.data) {
-      var resolvedId = cleanText(ir.data.trackId || ir.data.id);
-      if (resolvedId) return { id: resolvedId, isrcMatched: true, candidate: null };
+      resolvedIsrcId = cleanText(ir.data.trackId || ir.data.id);
     }
+  }
+
+  // Inspect several results for cache badges. Keep an ISRC-resolved ID as
+  // fallback if search is slow or does not return the same catalogue entry.
+  var query = cleanText((track.artist || '') + ' ' + (track.title || ''));
+  if (query && resource(manifest, 'search')) {
+    var sr = requestJson(endpoint(url, '/search', {
+      q: query,
+      limit: isDownload ? 10 : 5,
+      type: 'track'
+    }), isDownload ? 2200 : 1000);
+    if (sr.status === 200 && sr.data) {
+      var match = chooseCandidate(track, trackArrays(sr.data));
+      if (match) {
+        return {
+          id: String(match.id),
+          isrcMatched: !!(isrc && cleanText(match.isrc).toUpperCase() === isrc.toUpperCase()),
+          candidate: match
+        };
+      }
+    }
+  }
+
+  if (resolvedIsrcId) {
+    return { id: resolvedIsrcId, isrcMatched: true, candidate: null };
   }
 
   if (resource(manifest, 'resolve')) {
@@ -134,7 +187,7 @@ function resolveTrack(track, url, manifest, isDownload) {
       title: track.title,
       artist: track.artist || (track.artists && track.artists[0]),
       durationMs: track.durationMs || undefined
-    }), 3000);
+    }), 2200);
     if (rr.status === 200 && rr.data && rr.data.item && sameRecording(track, rr.data.item)) {
       return {
         id: String(rr.data.item.id),
@@ -143,31 +196,7 @@ function resolveTrack(track, url, manifest, isDownload) {
       };
     }
   }
-
-  var query = cleanText((track.artist || '') + ' ' + (track.title || ''));
-  if (!query) return null;
-  var sr = requestJson(endpoint(url, '/search', { q: query, limit: isDownload ? 10 : 1, type: 'track' }), isDownload ? 2500 : 1200);
-  if (sr.status !== 200 || !sr.data) return null;
-
-  var items = trackArrays(sr.data);
-  var exactIsrc = null;
-  var exactIdentity = null;
-  for (var i = 0; i < items.length; i++) {
-    var item = items[i];
-    if (!item || !item.id) continue;
-    if (isrc && cleanText(item.isrc).toUpperCase() === isrc.toUpperCase()) {
-      exactIsrc = item;
-      break;
-    }
-    if (!exactIdentity && sameRecording(track, item)) exactIdentity = item;
-  }
-  var match = exactIsrc || exactIdentity;
-  if (!match) return null;
-  return {
-    id: String(match.id),
-    isrcMatched: !!(isrc && cleanText(match.isrc).toUpperCase() === isrc.toUpperCase()),
-    candidate: match
-  };
+  return null;
 }
 
 function resolveStream(track, isDownload) {
@@ -182,7 +211,24 @@ function resolveStream(track, isDownload) {
   // NullBeat has one stream resolver for both playback and downloads. The quality
   // is encoded in the generated manifest URL; do not append a quality override.
   var streamUrl = endpoint(url, streamPath, null);
-  var sr = requestJson(streamUrl, isDownload ? 19000 : 11500);
+  // Two bounded attempts keep playback within Orpheon's 15-second hook budget.
+  var attemptTimeout = isDownload ? 9000 : 4800;
+  var sr = { status: 0, data: null, headers: {} };
+  for (var attempt = 0; attempt < 2; attempt++) {
+    try {
+      sr = requestJson(streamUrl, attemptTimeout);
+    } catch (streamError) {
+      sr = { status: 0, data: null, headers: {} };
+    }
+    if (sr.status === 200 && sr.data && typeof sr.data.url === 'string' &&
+        /^https:\/\//i.test(cleanText(sr.data.url))) break;
+    var retryable = sr.status === 0 || sr.status === 408 || sr.status === 425 ||
+      sr.status === 429 || sr.status === 500 || sr.status === 502 ||
+      sr.status === 503 || sr.status === 504 ||
+      (sr.status === 200 && (!sr.data || typeof sr.data.url !== 'string' ||
+        !/^https:\/\//i.test(cleanText(sr.data.url))));
+    if (!retryable || attempt === 1) break;
+  }
   if (sr.status === 401 || sr.status === 403) {
     if (feature('results')) return { outcome: 'sign-in', detail: 'Check the NullBeat manifest URL and access token in settings.' };
     return null;
