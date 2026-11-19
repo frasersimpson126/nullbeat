@@ -11,6 +11,70 @@ var manifestCache = null;
 var manifestCacheUrl = '';
 var manifestCacheAt = 0;
 
+var STATS_KEY = 'playback_stats_v1';
+var playbackStats = null;
+
+function emptyStats() {
+  return {
+    plays: 0,
+    streamPlays: 0,
+    downloadPlays: 0,
+    otherPlays: 0,
+    completed: 0,
+    skipped: 0,
+    playedMs: 0,
+    lastPlayedAt: 0
+  };
+}
+
+function getStats() {
+  if (playbackStats) return playbackStats;
+  try {
+    var saved = myspoti.storage.get(STATS_KEY);
+    playbackStats = saved && typeof saved === 'object' ? saved : emptyStats();
+  } catch (e) {
+    playbackStats = emptyStats();
+    myspoti.log('NullBeat statistics storage unavailable: ' + cleanText(e.message || e));
+  }
+  var defaults = emptyStats();
+  Object.keys(defaults).forEach(function (key) {
+    if (typeof playbackStats[key] !== 'number' || !isFinite(playbackStats[key])) {
+      playbackStats[key] = defaults[key];
+    }
+  });
+  return playbackStats;
+}
+
+function saveStats() {
+  try {
+    myspoti.storage.set(STATS_KEY, getStats());
+  } catch (e) {
+    myspoti.log('NullBeat could not save playback statistics: ' + cleanText(e.message || e));
+  }
+}
+
+function formatPlayTime(ms) {
+  var totalMinutes = Math.floor(Math.max(0, Number(ms) || 0) / 60000);
+  var hours = Math.floor(totalMinutes / 60);
+  var minutes = totalMinutes % 60;
+  return hours ? hours + 'h ' + minutes + 'm' : minutes + 'm';
+}
+
+function showStats() {
+  var s = getStats();
+  var summary = 'NullBeat stats: ' + s.plays + ' plays · ' + s.streamPlays +
+    ' streams · ' + s.downloadPlays + ' downloads · ' + s.completed +
+    ' completed · ' + s.skipped + ' skipped · ' + formatPlayTime(s.playedMs) + ' listened.';
+  myspoti.notify(summary.substring(0, 200));
+  myspoti.log('Playback statistics: ' + JSON.stringify(s));
+}
+
+function resetStats() {
+  playbackStats = emptyStats();
+  saveStats();
+  myspoti.notify('NullBeat playback statistics reset.');
+}
+
 function feature(name) {
   return !!(myspoti.features && myspoti.features.indexOf(name) >= 0);
 }
@@ -384,10 +448,39 @@ myspoti.on('setting', function (event) {
 });
 
 myspoti.on('playback', function (event) {
-  if (!event || event.type !== 'start' || !event.track) return;
-  if (event.origin === 'download' && event.providerId === myspoti.extension.id) {
-    myspoti.log('Playback origin: downloaded NullBeat track.');
-  } else if (event.origin === 'audio-source' && event.providerId === myspoti.extension.id) {
-    myspoti.log('Playback origin: NullBeat stream.');
+  if (!event || !event.track) return;
+  var ownDownload = event.origin === 'download' && event.providerId === myspoti.extension.id;
+  var ownStream = event.origin === 'audio-source' && event.providerId === myspoti.extension.id;
+
+  if (event.type === 'start') {
+    var stats = getStats();
+    stats.plays += 1;
+    stats.lastPlayedAt = Number(event.timestamp) || Date.now();
+    if (ownStream) {
+      stats.streamPlays += 1;
+      myspoti.log('Playback origin: NullBeat stream.');
+    } else if (ownDownload) {
+      stats.downloadPlays += 1;
+      myspoti.log('Playback origin: downloaded NullBeat track.');
+    } else {
+      stats.otherPlays += 1;
+    }
+    saveStats();
+    return;
   }
+
+  if (!ownDownload && !ownStream) return;
+  if (event.type === 'end' || event.type === 'skip') {
+    var finalStats = getStats();
+    if (event.type === 'end' && event.reason === 'finished') finalStats.completed += 1;
+    if (event.type === 'skip') finalStats.skipped += 1;
+    finalStats.playedMs += Math.max(0, Number(event.playedMs) || 0);
+    saveStats();
+  }
+});
+
+myspoti.on('setting', function (event) {
+  if (!event || !event.pressed) return;
+  if (event.key === 'show_stats') showStats();
+  if (event.key === 'reset_stats') resetStats();
 });
