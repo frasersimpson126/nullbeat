@@ -1,8 +1,8 @@
 {
   "id": "io.github.frasersimpson126.nullbeat",
   "name": "NullBeat for Orpheon",
-  "version": "1.0.1",
-  "versionCode": 2,
+  "version": "1.0.2",
+  "versionCode": 3,
   "apiVersion": 1,
   "author": "Fraser Simpson",
   "description": "Streams and downloads through a token-scoped NullBeat Lite addon. Uses NullBeat's configured quality and exposes its TorBox cache badges.",
@@ -66,5 +66,5 @@
       "Press Test NullBeat connection, then play or download a track."
     ]
   },
-  "changelog": "1.0.1: Match the actual NullBeat Lite tokenized manifest and stream routes; preserve token-selected quality; surface search cache badges and download size metadata."
+  "changelog": "1.0.2: Prefer cached exact matches and retry transient stream-resolution failures once within Orpheon hook time limits."
 }
