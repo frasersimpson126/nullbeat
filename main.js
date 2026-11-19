@@ -235,9 +235,10 @@ function resolveStream(track, isDownload) {
 }
 
 function cacheLabel(result) {
-  if (result.cached) return 'NullBeat · TorBox cached';
+  if (result.cached) return 'NullBeat · TorBox cached' + (result.quality ? ' · ' + result.quality : '');
+  if (result.quality) return 'NullBeat · ' + result.quality;
   if (result.title) return 'NullBeat · ' + result.title.replace(/\s+/g, ' ').substring(0, 55);
-  return 'NullBeat · ' + (result.quality || 'stream');
+  return 'NullBeat · stream';
 }
 
 function audioAnswer(track) {
