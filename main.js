@@ -137,7 +137,7 @@ function resolveTrack(track, url, manifest) {
       title: track.title,
       artist: track.artist || (track.artists && track.artists[0]),
       durationMs: track.durationMs || undefined
-    }), 7000);
+    }), 3000);
     if (rr.status === 200 && rr.data && rr.data.item && sameRecording(track, rr.data.item)) {
       return {
         id: String(rr.data.item.id),
@@ -175,7 +175,7 @@ function resolveTrack(track, url, manifest) {
 
 function resolveStream(track, isDownload) {
   var url = manifestUrl();
-  var manifest = getManifest(url, true);
+  var manifest = getManifest(url, false);
   if (!resource(manifest, 'stream')) return null;
 
   var match = resolveTrack(track, url, manifest);
@@ -304,7 +304,7 @@ myspoti.on('setting', function (event) {
   if (!event || event.key !== 'test_connection' || !event.pressed) return;
   try {
     var url = manifestUrl();
-    var manifest = getManifest(url);
+    var manifest = getManifest(url, true);
     if (!resource(manifest, 'search') || !resource(manifest, 'stream')) {
       myspoti.notify('Manifest loaded, but this addon does not advertise both search and stream.');
       return;
