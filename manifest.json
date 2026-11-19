@@ -38,6 +38,10 @@
     {
       "name": "playback.events",
       "why": "Records playback origin for diagnostics and cache visibility."
+    },
+    {
+      "name": "notify",
+      "why": "Shows connection-test results and actionable setup errors in Orpheon."
     }
   ],
   "settings": [
