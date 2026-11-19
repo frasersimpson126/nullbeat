@@ -19,7 +19,7 @@ An Orpheon / Myspoti extension that uses one configured Eclipse-compatible NullB
 
 ## Playback statistics
 
-Statistics are stored locally using Orpheon's extension storage and persist across app restarts. A play is counted when playback starts; stream and download counts are attributed only when Orpheon reports this extension as the provider. Completed tracks count when Orpheon reports a finished end event, skips count on skip events, and listening time uses Orpheon's `playedMs` value (which excludes pauses and seeks). Other playback sources are included in the overall play count but not in NullBeat's stream/download subtotals. Use the two settings buttons to view or reset the counters. Resetting is permanent.
+Statistics are stored locally using Orpheon's extension storage and persist across app restarts. A play is counted when playback starts; stream and download counts are attributed only when Orpheon reports this extension as the provider. Completed tracks count when Orpheon reports a finished end event, skips count on skip events, and listening time uses Orpheon's `playedMs` value (which excludes pauses and seeks). Other playback sources are excluded. Use the two settings buttons to view or reset the counters. Resetting is permanent.
 
 These figures describe playback events observed by Orpheon; they are not server-side request totals or proof that a track was fully cached.
 
