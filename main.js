@@ -6,7 +6,6 @@
  * Keep this file ES6/Rhino compatible: no fetch, promises, timers or Node APIs.
  */
 
-var EXTENSION_NAME = 'NullBeat';
 var SAMPLE_QUERY = 'Never Gonna Give You Up Rick Astley';
 var manifestCache = null;
 var manifestCacheUrl = '';
@@ -67,7 +66,7 @@ function getManifest(url, forceRefresh) {
   if (!forceRefresh && manifestCache && manifestCacheUrl === url && Date.now() - manifestCacheAt < 300000) {
     return manifestCache;
   }
-  var r = requestJson(url, 1500);
+  var r = requestJson(url, 1000);
   if (r.status !== 200 || !r.data || typeof r.data !== 'object') {
     throw new Error('Manifest request failed (HTTP ' + r.status + '). Check the URL and token.');
   }
@@ -123,7 +122,7 @@ function trackArrays(data) {
 function resolveTrack(track, url, manifest) {
   var isrc = cleanText(track.isrc);
   if (isrc && resource(manifest, 'isrc')) {
-    var ir = requestJson(endpoint(url, '/resolve-isrc', { isrc: isrc }), 1500);
+    var ir = requestJson(endpoint(url, '/resolve-isrc', { isrc: isrc }), 1000);
     if (ir.status === 200 && ir.data) {
       var resolvedId = cleanText(ir.data.trackId || ir.data.id);
       if (resolvedId) return { id: resolvedId, isrcMatched: true, candidate: null };
@@ -148,7 +147,7 @@ function resolveTrack(track, url, manifest) {
 
   var query = cleanText((track.artist || '') + ' ' + (track.title || ''));
   if (!query) return null;
-  var sr = requestJson(endpoint(url, '/search', { q: query }), 2000);
+  var sr = requestJson(endpoint(url, '/search', { q: query, limit: isDownload ? 10 : 1, type: 'track' }), isDownload ? 2500 : 1200);
   if (sr.status !== 200 || !sr.data) return null;
 
   var items = trackArrays(sr.data);
@@ -181,8 +180,10 @@ function resolveStream(track, isDownload) {
   if (!match) return null;
 
   var streamPath = '/stream/' + encodeURIComponent(match.id);
-  var streamUrl = endpoint(url, streamPath, isDownload ? { download: 'true' } : null);
-  var sr = requestJson(streamUrl, isDownload ? 25000 : 11000);
+  // NullBeat has one stream resolver for both playback and downloads. The quality
+  // is encoded in the generated manifest URL; do not append a quality override.
+  var streamUrl = endpoint(url, streamPath, null);
+  var sr = requestJson(streamUrl, isDownload ? 19000 : 11500);
   if (sr.status === 401 || sr.status === 403) {
     if (feature('results')) return { outcome: 'sign-in', detail: 'Check the NullBeat manifest URL and access token in settings.' };
     return null;
@@ -206,8 +207,9 @@ function resolveStream(track, isDownload) {
   if (format !== 'flac' && format !== 'm4a' && format !== 'mp3') return null;
 
   var title = cleanText(sr.data.title);
+  var cacheText = cleanText(match.candidate && match.candidate.infotext);
   var cached = /torbox cached|cache hit|cached/i.test(title) ||
-    !!sr.data.infohash || !!sr.data.cached;
+    /cached/i.test(cacheText) || !!sr.data.infohash || !!sr.data.cached;
   var quality = cleanText(sr.data.quality);
   var codec = cleanText(sr.data.codec).toLowerCase();
   if (!codec) codec = format === 'flac' ? 'flac' : (format === 'mp3' ? 'mp3' : 'aac');
@@ -229,12 +231,15 @@ function resolveStream(track, isDownload) {
     expiresInMs: expiresInMs,
     quality: quality,
     cached: cached,
+    cacheText: cacheText,
+    sizeHint: Number(sr.data.sizeMb) > 0 ? Math.round(Number(sr.data.sizeMb) * 1048576) : undefined,
     isrcMatched: match.isrcMatched,
     title: title
   };
 }
 
 function cacheLabel(result) {
+  if (result.cacheText) return 'NullBeat · ' + result.cacheText.replace(/\\s+/g, ' ').substring(0, 70);
   if (result.cached) return 'NullBeat · TorBox cached' + (result.quality ? ' · ' + result.quality : '');
   if (result.quality) return 'NullBeat · ' + result.quality;
   if (result.title) return 'NullBeat · ' + result.title.replace(/\s+/g, ' ').substring(0, 55);
@@ -277,6 +282,7 @@ function downloadAnswer(track) {
       provider: result.cached ? 'NullBeat · TorBox cached' : 'NullBeat',
       bitDepth: result.bitDepth,
       sampleRate: result.sampleRate,
+      sizeHint: result.sizeHint,
       isrcMatched: result.isrcMatched
     }];
   } catch (e) {
