@@ -5,7 +5,7 @@
   "versionCode": 4,
   "apiVersion": 1,
   "author": "Fraser Simpson",
-  "description": "Streams and downloads through a token-scoped NullBeat Lite addon. Uses NullBeat's configured quality and exposes its TorBox cache badges.",
+  "description": "Streams and downloads through NullBeat, prefers cached matches, and resolves the next queue track ahead of playback.",
   "homepage": "https://github.com/frasersimpson126/nullbeat",
   "category": "playback",
   "tags": [
