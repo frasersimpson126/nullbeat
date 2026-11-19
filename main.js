@@ -214,7 +214,7 @@ function resolveStream(track, isDownload, isAhead) {
   // Orpheon asks for the next queue track about 10 seconds before it plays.
   // Use that ahead window to let NullBeat begin resolving/filling its cache.
   // Keep the total inside the 15-second audio hook budget.
-  var attemptTimeout = isAhead ? 12000 : (isDownload ? 9000 : 4800);
+  var attemptTimeout = isAhead ? 11000 : (isDownload ? 9000 : 4800);
   var maxAttempts = isAhead ? 1 : 2;
   var sr = { status: 0, data: null, headers: {} };
   for (var attempt = 0; attempt < maxAttempts; attempt++) {
