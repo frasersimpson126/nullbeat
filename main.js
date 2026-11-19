@@ -9,6 +9,9 @@
 var EXTENSION_NAME = 'NullBeat';
 var SAMPLE_QUERY = 'Never Gonna Give You Up Rick Astley';
 var lastPlayback = null;
+var manifestCache = null;
+var manifestCacheUrl = '';
+var manifestCacheAt = 0;
 
 function feature(name) {
   return !!(myspoti.features && myspoti.features.indexOf(name) >= 0);
@@ -61,15 +64,21 @@ function manifestUrl() {
   return url;
 }
 
-function getManifest(url) {
-  var r = requestJson(url, 7000);
+function getManifest(url, forceRefresh) {
+  if (!forceRefresh && manifestCache && manifestCacheUrl === url && Date.now() - manifestCacheAt < 300000) {
+    return manifestCache;
+  }
+  var r = requestJson(url, 2500);
   if (r.status !== 200 || !r.data || typeof r.data !== 'object') {
     throw new Error('Manifest request failed (HTTP ' + r.status + '). Check the URL and token.');
   }
   if (!r.data.id || !r.data.name || !r.data.resources) {
     throw new Error('The URL did not return a valid Eclipse addon manifest.');
   }
-  return r.data;
+  manifestCache = r.data;
+  manifestCacheUrl = url;
+  manifestCacheAt = Date.now();
+  return manifestCache;
 }
 
 function resource(manifest, name) {
@@ -115,7 +124,7 @@ function trackArrays(data) {
 function resolveTrack(track, url, manifest) {
   var isrc = cleanText(track.isrc);
   if (isrc && resource(manifest, 'isrc')) {
-    var ir = requestJson(endpoint(url, '/resolve-isrc', { isrc: isrc }), 7000);
+    var ir = requestJson(endpoint(url, '/resolve-isrc', { isrc: isrc }), 3000);
     if (ir.status === 200 && ir.data) {
       var resolvedId = cleanText(ir.data.trackId || ir.data.id);
       if (resolvedId) return { id: resolvedId, isrcMatched: true, candidate: null };
@@ -140,7 +149,7 @@ function resolveTrack(track, url, manifest) {
 
   var query = cleanText((track.artist || '') + ' ' + (track.title || ''));
   if (!query) return null;
-  var sr = requestJson(endpoint(url, '/search', { q: query }), 9000);
+  var sr = requestJson(endpoint(url, '/search', { q: query }), 4500);
   if (sr.status !== 200 || !sr.data) return null;
 
   var items = trackArrays(sr.data);
@@ -166,7 +175,7 @@ function resolveTrack(track, url, manifest) {
 
 function resolveStream(track, isDownload) {
   var url = manifestUrl();
-  var manifest = getManifest(url);
+  var manifest = getManifest(url, true);
   if (!resource(manifest, 'stream')) return null;
 
   var match = resolveTrack(track, url, manifest);
@@ -174,7 +183,7 @@ function resolveStream(track, isDownload) {
 
   var streamPath = '/stream/' + encodeURIComponent(match.id);
   var streamUrl = endpoint(url, streamPath, isDownload ? { download: 'true' } : null);
-  var sr = requestJson(streamUrl, isDownload ? 18000 : 12000);
+  var sr = requestJson(streamUrl, isDownload ? 16000 : 5500);
   if (sr.status === 401 || sr.status === 403) {
     if (feature('results')) return { outcome: 'sign-in', detail: 'Check the NullBeat manifest URL and access token in settings.' };
     return null;
@@ -240,6 +249,7 @@ function audioAnswer(track) {
     var answer = {
       url: result.url,
       source: cacheLabel(result),
+      mimeType: result.format === 'flac' ? 'audio/flac' : (result.format === 'mp3' ? 'audio/mpeg' : 'audio/mp4'),
       durationMs: result.durationMs
     };
     if (feature('audio.expires') && result.expiresInMs !== undefined) answer.expiresInMs = result.expiresInMs;
@@ -282,9 +292,9 @@ myspoti.provide('download-source', downloadAnswer);
 myspoti.provide('status', function () {
   try {
     var url = manifestUrl();
-    var r = requestJson(url, 3500);
-    if (r.status === 200 && r.data && r.data.id) return { live: true };
-    return { live: false, detail: 'NullBeat manifest returned HTTP ' + r.status + '. Check the URL and token.' };
+    var manifest = getManifest(url, false);
+    if (manifest && manifest.id) return { live: true };
+    return { live: false, detail: 'NullBeat returned an invalid manifest. Check the URL and token.' };
   } catch (e) {
     return { live: false, detail: cleanText(e.message || e).substring(0, 120) };
   }
