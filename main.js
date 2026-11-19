@@ -8,7 +8,6 @@
 
 var EXTENSION_NAME = 'NullBeat';
 var SAMPLE_QUERY = 'Never Gonna Give You Up Rick Astley';
-var lastPlayback = null;
 var manifestCache = null;
 var manifestCacheUrl = '';
 var manifestCacheAt = 0;
@@ -324,13 +323,7 @@ myspoti.on('setting', function (event) {
 
 myspoti.on('playback', function (event) {
   if (!event || event.type !== 'start' || !event.track) return;
-  lastPlayback = {
-    title: cleanText(event.track.title),
-    origin: cleanText(event.origin),
-    providerId: cleanText(event.providerId),
-    timestamp: Number(event.timestamp) || Date.now()
-  };
-  if (event.origin === 'download') {
+  if (event.origin === 'download' && event.providerId === myspoti.extension.id) {
     myspoti.log('Playback origin: downloaded NullBeat track.');
   } else if (event.origin === 'audio-source' && event.providerId === myspoti.extension.id) {
     myspoti.log('Playback origin: NullBeat stream.');
