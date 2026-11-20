@@ -230,6 +230,129 @@ function trackArrays(data) {
 }
 
 
+var preparedQueueMatches = {};
+
+function httpBatchJson(urls, timeout) {
+  if (!urls.length) return [];
+  if (feature('http.all')) {
+    var responses = myspoti.http.all(urls.map(function (url) {
+      return { url: url, method: 'GET', timeout: timeout };
+    }));
+    return responses.map(function (response) {
+      if (!response || response.error || response.status !== 200) {
+        return { status: response && response.status ? response.status : 0, data: null };
+      }
+      try { return { status: response.status, data: response.json() }; }
+      catch (e) { return { status: response.status, data: null }; }
+    });
+  }
+  return urls.map(function (url) { return requestJson(url, timeout); });
+}
+
+function queueTrack(item) {
+  if (!item || !item.uri || !item.name) return null;
+  var artists = Array.isArray(item.artists) ? item.artists : [];
+  var names = artists.map(function (artist) {
+    return cleanText(artist && (artist.name || artist));
+  }).filter(function (name) { return !!name; });
+  if (!names.length) return null;
+  return {
+    uri: cleanText(item.uri),
+    title: cleanText(item.name),
+    artist: names[0],
+    artists: names,
+    durationMs: Number(item.durationMs) || 0
+  };
+}
+
+function prepareSpotifyQueue() {
+  var url = manifestUrl();
+  var manifest = getManifest(url, false);
+  if (!resource(manifest, 'search') || !resource(manifest, 'stream')) {
+    throw new Error('The NullBeat addon must advertise search and stream resources.');
+  }
+  if (!myspoti.spotify || !myspoti.spotify.player ||
+      typeof myspoti.spotify.player.queue !== 'function') {
+    throw new Error('This Revera version does not expose the Spotify queue fetcher.');
+  }
+
+  // Reading the Spotify queue is an explicit, user-confirmed API operation.
+  var queue = myspoti.spotify.player.queue();
+  if (!queue) throw new Error('Spotify returned no queue snapshot.');
+
+  var rawItems = (Array.isArray(queue.queued) ? queue.queued : [])
+    .concat(Array.isArray(queue.nextUp) ? queue.nextUp : []);
+  var tracks = [];
+  var seen = {};
+  for (var i = 0; i < rawItems.length && tracks.length < 5; i++) {
+    var t = queueTrack(rawItems[i]);
+    if (!t || seen[t.uri]) continue;
+    seen[t.uri] = true;
+    tracks.push(t);
+  }
+  preparedQueueMatches = {};
+  if (!tracks.length) {
+    myspoti.notify('NullBeat: no upcoming Spotify tracks were found.');
+    return;
+  }
+
+  var searchUrls = tracks.map(function (track) {
+    return endpoint(url, '/search', {
+      q: track.artist + ' ' + track.title,
+      limit: 10,
+      type: 'track'
+    });
+  });
+  var searchResults = [];
+  for (var start = 0; start < searchUrls.length; start += 4) {
+    searchResults = searchResults.concat(httpBatchJson(searchUrls.slice(start, start + 4), 4500));
+  }
+
+  var matched = [];
+  for (var j = 0; j < tracks.length; j++) {
+    var response = searchResults[j];
+    var items = response && response.status === 200 ? trackArrays(response.data) : [];
+    var candidate = chooseCandidate(tracks[j], items);
+    if (!candidate) candidate = chooseArtistTitleCandidate(tracks[j], items);
+    if (!candidate) continue;
+    preparedQueueMatches[tracks[j].uri] = {
+      id: String(candidate.id),
+      isrcMatched: false,
+      candidate: candidate
+    };
+    matched.push({ track: tracks[j], id: String(candidate.id) });
+  }
+
+  // Ask the backend to prepare each matched item. Do not retain expiring URLs.
+  var streamUrls = matched.map(function (item) {
+    return endpoint(url, '/stream/' + encodeURIComponent(item.id), null);
+  });
+  var prepared = 0;
+  for (var k = 0; k < streamUrls.length; k += 4) {
+    var streamResults = httpBatchJson(streamUrls.slice(k, k + 4), 6000);
+    for (var n = 0; n < streamResults.length; n++) {
+      var result = streamResults[n];
+      if (result && result.status === 200 && result.data &&
+          typeof result.data.url === 'string' && /^https:\/\//i.test(cleanText(result.data.url))) {
+        prepared++;
+      }
+    }
+  }
+
+  myspoti.log('NullBeat queue preparation: matched ' + matched.length + '/' + tracks.length +
+    ' upcoming tracks; stream preparation responded for ' + prepared + '.');
+  myspoti.notify('NullBeat prepared ' + prepared + '/' + tracks.length +
+    ' upcoming tracks. Unmatched tracks will resolve normally.');
+}
+
+function takePreparedQueueMatch(track) {
+  var uri = cleanText(track && track.uri);
+  if (!uri || !preparedQueueMatches[uri]) return null;
+  var match = preparedQueueMatches[uri];
+  delete preparedQueueMatches[uri];
+  return match;
+}
+
 function resolveTrack(track, url, manifest, isDownload) {
   var isrc = cleanText(track.isrc);
   var resolvedIsrcId = '';
@@ -295,7 +418,7 @@ function resolveStream(track, isDownload, isAhead) {
   var manifest = getManifest(url, false);
   if (!resource(manifest, 'stream')) return null;
 
-  var match = resolveTrack(track, url, manifest, isDownload);
+  var match = takePreparedQueueMatch(track) || resolveTrack(track, url, manifest, isDownload);
   if (!match) return null;
 
   var streamPath = '/stream/' + encodeURIComponent(match.id);
@@ -456,6 +579,16 @@ myspoti.provide('status', function () {
     return { live: false, detail: 'NullBeat returned an invalid manifest. Check the URL and token.' };
   } catch (e) {
     return { live: false, detail: cleanText(e.message || e).substring(0, 120) };
+  }
+});
+
+myspoti.on('setting', function (event) {
+  if (!event || event.key !== 'prepare_queue' || !event.pressed) return;
+  try {
+    prepareSpotifyQueue();
+  } catch (e) {
+    myspoti.notify('NullBeat queue preparation failed: ' + cleanText(e.message || e).substring(0, 130));
+    myspoti.log('NullBeat queue preparation failed: ' + cleanText(e.message || e).substring(0, 180));
   }
 });
 
