@@ -488,7 +488,7 @@ function prepareSpotifyQueue(nextItems) {
   var rawItems = Array.isArray(nextItems) ? nextItems : [];
   var extraPrecache = Number(myspoti.settings.get('extra_precache'));
   if (!isFinite(extraPrecache)) extraPrecache = 0;
-  extraPrecache = Math.max(0, Math.min(5, Math.floor(extraPrecache)));
+  extraPrecache = Math.max(0, Math.min(4, Math.floor(extraPrecache)));
   var queueLimit = 1 + extraPrecache;
   myspoti.log('NullBeat queue update received: ' + rawItems.length +
     ' upcoming entries; preparing up to ' + queueLimit +
@@ -871,8 +871,6 @@ function downloadAnswer(track) {
   var label = ((artist ? artist + ' - ' : '') + (title || 'Unknown track')).substring(0, 100);
   myspoti.log('NullBeat download hook entered [' + label + '].');
   try {
-    var cacheOnly = myspoti.settings.get('cache_only') === true;
-    myspoti.log('NullBeat download mode [' + label + ']: ' + (cacheOnly ? 'cache-only' : 'normal') + '.');
     var result = resolveStream(track, true);
     if (!result) {
       downloadDiagnostic(track, 'Download hook returning no file: stream resolution returned no result.');
@@ -881,12 +879,6 @@ function downloadAnswer(track) {
     if (result.outcome) {
       downloadDiagnostic(track, 'Download hook returning resolver outcome=' + cleanText(result.outcome) + '.');
       return result;
-    }
-    if (cacheOnly) {
-      // Resolving the stream asks NullBeat to prepare/cache the track. Do not
-      // hand the playable URL to Revera in cache-only mode.
-      downloadDiagnostic(track, 'Cache-only: cache request made; no file handed to Revera.');
-      return null;
     }
     var files = [{
       url: result.url,
