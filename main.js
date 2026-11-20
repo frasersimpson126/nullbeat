@@ -233,8 +233,8 @@ function trackArrays(data) {
 var preparedQueueMatches = {};
 
 function httpBatchJson(urls, timeout) {
-  if (!urls.length) return [];
-  if (feature('http.all')) {
+  if (!urls.length || !feature('http.all')) return [];
+  try {
     var responses = myspoti.http.all(urls.map(function (url) {
       return { url: url, method: 'GET', timeout: timeout };
     }));
@@ -245,9 +245,10 @@ function httpBatchJson(urls, timeout) {
       try { return { status: response.status, data: response.json() }; }
       catch (e) { return { status: response.status, data: null }; }
     });
+  } catch (e) {
+    myspoti.log('NullBeat queue batch failed: ' + cleanText(e.message || e).substring(0, 120));
+    return [];
   }
-  // Older hosts lack http.all; keep the serial fallback bounded for the 30 s setting event.
-  return urls.map(function (url) { return requestJson(url, Math.min(timeout, 2000)); });
 }
 
 function queueTrack(item) {
@@ -266,25 +267,20 @@ function queueTrack(item) {
   };
 }
 
-function prepareSpotifyQueue() {
-  var url = manifestUrl();
-  var manifest = getManifest(url, false);
-  if (!resource(manifest, 'search') || !resource(manifest, 'stream')) {
-    throw new Error('The NullBeat addon must advertise search and stream resources.');
-  }
-  if (!myspoti.spotify || !myspoti.spotify.player ||
-      typeof myspoti.spotify.player.queue !== 'function') {
-    throw new Error('This Revera version does not expose the Spotify queue fetcher.');
+// Revera delivers the published upcoming queue automatically. Keep all work
+// inside its three-second event budget: four requests per parallel batch,
+// short network timeouts, and no serial fallback on older hosts.
+function prepareSpotifyQueue(nextItems) {
+  var url;
+  try { url = manifestUrl(); } catch (e) { return; }
+  if (!feature('http.all')) {
+    myspoti.log('NullBeat automatic queue preparation needs Revera http.all; ahead-of-time playback fallback remains active.');
+    return;
   }
 
-  // Reading the Spotify queue is an explicit, user-confirmed API operation.
-  var queue = myspoti.spotify.player.queue();
-  if (!queue) throw new Error('Spotify returned no queue snapshot.');
-
-  var rawItems = (Array.isArray(queue.queued) ? queue.queued : [])
-    .concat(Array.isArray(queue.nextUp) ? queue.nextUp : []);
   var tracks = [];
   var seen = {};
+  var rawItems = Array.isArray(nextItems) ? nextItems : [];
   for (var i = 0; i < rawItems.length && tracks.length < 5; i++) {
     var t = queueTrack(rawItems[i]);
     if (!t || seen[t.uri]) continue;
@@ -292,10 +288,14 @@ function prepareSpotifyQueue() {
     tracks.push(t);
   }
   preparedQueueMatches = {};
-  if (!tracks.length) {
-    myspoti.notify('NullBeat: no upcoming Spotify tracks were found.');
+  if (!tracks.length) return;
+
+  var manifest;
+  try { manifest = getManifest(url, false); } catch (e) {
+    myspoti.log('NullBeat queue preparation skipped: manifest unavailable.');
     return;
   }
+  if (!resource(manifest, 'search') || !resource(manifest, 'stream')) return;
 
   var searchUrls = tracks.map(function (track) {
     return endpoint(url, '/search', {
@@ -306,7 +306,7 @@ function prepareSpotifyQueue() {
   });
   var searchResults = [];
   for (var start = 0; start < searchUrls.length; start += 4) {
-    searchResults = searchResults.concat(httpBatchJson(searchUrls.slice(start, start + 4), 4500));
+    searchResults = searchResults.concat(httpBatchJson(searchUrls.slice(start, start + 4), 550));
   }
 
   var matched = [];
@@ -324,13 +324,14 @@ function prepareSpotifyQueue() {
     matched.push({ track: tracks[j], id: String(candidate.id) });
   }
 
-  // Ask the backend to prepare each matched item. Do not retain expiring URLs.
+  // Calling the normal stream endpoint starts the backend's cache path.
+  // Discard returned URLs: they may expire before the track is played.
   var streamUrls = matched.map(function (item) {
     return endpoint(url, '/stream/' + encodeURIComponent(item.id), null);
   });
   var prepared = 0;
   for (var k = 0; k < streamUrls.length; k += 4) {
-    var streamResults = httpBatchJson(streamUrls.slice(k, k + 4), 6000);
+    var streamResults = httpBatchJson(streamUrls.slice(k, k + 4), 550);
     for (var n = 0; n < streamResults.length; n++) {
       var result = streamResults[n];
       if (result && result.status === 200 && result.data &&
@@ -340,10 +341,8 @@ function prepareSpotifyQueue() {
     }
   }
 
-  myspoti.log('NullBeat queue preparation: matched ' + matched.length + '/' + tracks.length +
-    ' upcoming tracks; stream preparation responded for ' + prepared + '.');
-  myspoti.notify('NullBeat prepared ' + prepared + '/' + tracks.length +
-    ' upcoming tracks. Unmatched tracks will resolve normally.');
+  myspoti.log('NullBeat automatic queue preparation: matched ' + matched.length + '/' +
+    tracks.length + '; stream endpoint responded for ' + prepared + '.');
 }
 
 function takePreparedQueueMatch(track) {
@@ -583,13 +582,11 @@ myspoti.provide('status', function () {
   }
 });
 
-myspoti.on('setting', function (event) {
-  if (!event || event.key !== 'prepare_queue' || !event.pressed) return;
+myspoti.on('queue', function (event) {
   try {
-    prepareSpotifyQueue();
+    prepareSpotifyQueue(event && event.next);
   } catch (e) {
-    myspoti.notify('NullBeat queue preparation failed: ' + cleanText(e.message || e).substring(0, 130));
-    myspoti.log('NullBeat queue preparation failed: ' + cleanText(e.message || e).substring(0, 180));
+    myspoti.log('NullBeat automatic queue preparation failed: ' + cleanText(e.message || e).substring(0, 160));
   }
 });
 
