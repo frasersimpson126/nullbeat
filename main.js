@@ -419,9 +419,17 @@ function audioAnswer(track) {
 
 function downloadAnswer(track) {
   try {
+    var cacheOnly = myspoti.settings.get('cache_only') === true;
     var result = resolveStream(track, true);
     if (!result) return null;
     if (result.outcome) return result;
+    if (cacheOnly) {
+      // Resolving the stream asks NullBeat to prepare/cache the track. Do not
+      // hand the playable URL to Revera in cache-only mode.
+      myspoti.log('NullBeat cache-only: requested cache preparation for ' +
+        cleanText(track && track.artist) + ' - ' + cleanText(track && track.title) + '.');
+      return null;
+    }
     return [{
       url: result.url,
       format: result.format,
