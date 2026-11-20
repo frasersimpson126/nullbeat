@@ -1,8 +1,8 @@
 {
   "id": "io.github.frasersimpson126.nullbeat",
   "name": "NullBeat",
-  "version": "1.0.9",
-  "versionCode": 10,
+  "version": "1.1.0",
+  "versionCode": 11,
   "apiVersion": 1,
   "author": "Fraser Simpson",
   "description": "Streams and downloads through NullBeat, with cache-aware matching, queue preparation and persistent playback statistics.",
@@ -63,6 +63,12 @@
       "default": false
     },
     {
+      "key": "prepare_queue",
+      "type": "button",
+      "label": "Prepare upcoming queue",
+      "description": "Reads the current Spotify queue with your approval and asks NullBeat to prepare up to five upcoming tracks."
+    },
+    {
       "key": "test_connection",
       "type": "button",
       "label": "Test NullBeat connection",
@@ -89,5 +95,5 @@
       "Press Test NullBeat connection, then play or download a track."
     ]
   },
-  "changelog": "1.0.9: Add an optional cache-only download mode. 1.0.8: Add artist and title fallback matching when exact recording matching fails. 1.0.7: Remove the download provider field so no provider label is displayed. 1.0.6: Remove the TorBox cached label from downloaded tracks; provider displays as NullBeat. 1.0.5: Add persistent playback statistics and controls to view or reset them. 1.0.4: Log Orpheon's ahead request immediately when the hook receives it."
+  "changelog": "1.1.0: Add manual Spotify queue fetching and parallel preparation of up to five upcoming tracks. 1.0.9: Add an optional cache-only download mode. 1.0.8: Add artist and title fallback matching when exact recording matching fails. 1.0.7: Remove the download provider field so no provider label is displayed. 1.0.6: Remove the TorBox cached label from downloaded tracks; provider displays as NullBeat. 1.0.5: Add persistent playback statistics and controls to view or reset them. 1.0.4: Log Orpheon's ahead request immediately when the hook receives it."
 }
