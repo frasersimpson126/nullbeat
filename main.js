@@ -290,13 +290,6 @@ function prepareSpotifyQueue(nextItems) {
   preparedQueueMatches = {};
   if (!tracks.length) return;
 
-  var manifest;
-  try { manifest = getManifest(url, false); } catch (e) {
-    myspoti.log('NullBeat queue preparation skipped: manifest unavailable.');
-    return;
-  }
-  if (!resource(manifest, 'search') || !resource(manifest, 'stream')) return;
-
   var searchUrls = tracks.map(function (track) {
     return endpoint(url, '/search', {
       q: track.artist + ' ' + track.title,
@@ -306,7 +299,7 @@ function prepareSpotifyQueue(nextItems) {
   });
   var searchResults = [];
   for (var start = 0; start < searchUrls.length; start += 4) {
-    searchResults = searchResults.concat(httpBatchJson(searchUrls.slice(start, start + 4), 550));
+    searchResults = searchResults.concat(httpBatchJson(searchUrls.slice(start, start + 4), 450));
   }
 
   var matched = [];
@@ -331,7 +324,7 @@ function prepareSpotifyQueue(nextItems) {
   });
   var prepared = 0;
   for (var k = 0; k < streamUrls.length; k += 4) {
-    var streamResults = httpBatchJson(streamUrls.slice(k, k + 4), 550);
+    var streamResults = httpBatchJson(streamUrls.slice(k, k + 4), 450);
     for (var n = 0; n < streamResults.length; n++) {
       var result = streamResults[n];
       if (result && result.status === 200 && result.data &&
