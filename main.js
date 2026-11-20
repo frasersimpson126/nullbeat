@@ -486,8 +486,14 @@ function prepareSpotifyQueue(nextItems) {
   var tracks = [];
   var seen = {};
   var rawItems = Array.isArray(nextItems) ? nextItems : [];
-  myspoti.log('NullBeat queue update received: ' + rawItems.length + ' upcoming entries.');
-  for (var i = 0; i < rawItems.length && tracks.length < 5; i++) {
+  var extraPrecache = Number(myspoti.settings.get('extra_precache'));
+  if (!isFinite(extraPrecache)) extraPrecache = 0;
+  extraPrecache = Math.max(0, Math.min(5, Math.floor(extraPrecache)));
+  var queueLimit = 1 + extraPrecache;
+  myspoti.log('NullBeat queue update received: ' + rawItems.length +
+    ' upcoming entries; preparing up to ' + queueLimit +
+    ' (1 default + ' + extraPrecache + ' additional).');
+  for (var i = 0; i < rawItems.length && tracks.length < queueLimit; i++) {
     var t = queueTrack(rawItems[i]);
     if (!t || seen[t.uri]) continue;
     seen[t.uri] = true;
