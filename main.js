@@ -176,19 +176,54 @@ function normalize(value) {
     .trim();
 }
 
+function artistNames(value) {
+  var values = [];
+  if (Array.isArray(value)) {
+    values = value.map(function (artist) {
+      return cleanText(artist && (artist.name || artist.artist || artist));
+    });
+  } else if (value && typeof value === 'object') {
+    values = [cleanText(value.name || value.artist)];
+  } else {
+    values = [cleanText(value)];
+  }
+  return values.map(normalize).filter(function (name) { return !!name; });
+}
+
+function candidateArtists(candidate) {
+  if (!candidate) return [];
+  var names = artistNames(candidate.artists);
+  names = names.concat(artistNames(candidate.artist));
+  return names.filter(function (name, index, all) { return all.indexOf(name) === index; });
+}
+
+function requestedArtists(track) {
+  var names = artistNames(track && track.artists);
+  names = names.concat(artistNames(track && track.artist));
+  return names.filter(function (name, index, all) { return all.indexOf(name) === index; });
+}
+
+function artistMatches(track, candidate) {
+  var wanted = requestedArtists(track);
+  var found = candidateArtists(candidate);
+  if (!wanted.length || !found.length) return false;
+  for (var i = 0; i < wanted.length; i++) {
+    if (found.indexOf(wanted[i]) >= 0) return true;
+  }
+  return false;
+}
+
 function sameRecording(track, candidate) {
-  if (!candidate || !candidate.id) return false;
+  if (!candidate || candidate.id == null || cleanText(candidate.id) === '') return false;
   var requestedIsrc = cleanText(track.isrc).toUpperCase();
   var candidateIsrc = cleanText(candidate.isrc).toUpperCase();
   if (requestedIsrc && candidateIsrc) return requestedIsrc === candidateIsrc;
 
   if (normalize(track.title) !== normalize(candidate.title)) return false;
-  var wantedArtist = normalize(track.artist || (track.artists && track.artists[0]));
-  var foundArtist = normalize(candidate.artist);
-  if (!wantedArtist || wantedArtist !== foundArtist) return false;
+  if (!artistMatches(track, candidate)) return false;
 
   var wantedDuration = Number(track.durationMs || 0);
-  var foundDuration = Number(candidate.durationMs || 0);
+  var foundDuration = Number(candidate.durationMs || candidate.duration_ms || 0);
   if (!foundDuration && Number(candidate.duration || 0)) foundDuration = Number(candidate.duration) * 1000;
   if (wantedDuration > 0 && foundDuration > 0 &&
       Math.abs(wantedDuration - foundDuration) > 10000) return false;
@@ -222,14 +257,11 @@ function chooseCandidate(track, items) {
 }
 
 function sameArtistAndTitle(track, candidate) {
-  if (!candidate || !candidate.id) return false;
+  if (!candidate || candidate.id == null || cleanText(candidate.id) === '') return false;
   var wantedTitle = normalize(track.title);
-  var foundTitle = normalize(candidate.title);
+  var foundTitle = normalize(candidate.title || candidate.name);
   if (!wantedTitle || wantedTitle !== foundTitle) return false;
-
-  var wantedArtist = normalize(track.artist || (track.artists && track.artists[0]));
-  var foundArtist = normalize(candidate.artist || (candidate.artists && candidate.artists[0]));
-  return !!wantedArtist && wantedArtist === foundArtist;
+  return artistMatches(track, candidate);
 }
 
 function chooseArtistTitleCandidate(track, items) {
@@ -245,10 +277,19 @@ function chooseArtistTitleCandidate(track, items) {
 
 function trackArrays(data) {
   if (!data || typeof data !== 'object') return [];
-  if (Array.isArray(data.tracks)) return data.tracks;
-  if (data.data && Array.isArray(data.data.tracks)) return data.data.tracks;
-  if (data.data && data.data.data && Array.isArray(data.data.data.tracks)) return data.data.data.tracks;
-  if (Array.isArray(data.results)) return data.results;
+  if (Array.isArray(data)) return data;
+  var current = data;
+  // Addon versions have returned the same catalogue list under different
+  // envelope keys. Unwrap only known container shapes; never treat metadata
+  // objects as track candidates.
+  for (var depth = 0; depth < 4 && current && typeof current === 'object'; depth++) {
+    if (Array.isArray(current.tracks)) return current.tracks;
+    if (Array.isArray(current.results)) return current.results;
+    if (Array.isArray(current.items)) return current.items;
+    if (Array.isArray(current.data)) return current.data;
+    if (current.data && typeof current.data === 'object') current = current.data;
+    else break;
+  }
   return [];
 }
 
