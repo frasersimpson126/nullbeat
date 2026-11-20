@@ -246,7 +246,8 @@ function httpBatchJson(urls, timeout) {
       catch (e) { return { status: response.status, data: null }; }
     });
   }
-  // Older hosts lack http.all; keep the serial fallback bounded for the 30 s setting event.\n  return urls.map(function (url) { return requestJson(url, Math.min(timeout, 2000)); });
+  // Older hosts lack http.all; keep the serial fallback bounded for the 30 s setting event.
+  return urls.map(function (url) { return requestJson(url, Math.min(timeout, 2000)); });
 }
 
 function queueTrack(item) {
