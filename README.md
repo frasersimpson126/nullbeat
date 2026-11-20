@@ -5,6 +5,7 @@ An Revera / Myspoti extension that uses one configured Eclipse-compatible NullBe
 ## Features
 
 - One private **NullBeat manifest URL** setting.
+- Optional **Cache-only mode**: download requests are resolved through NullBeat to trigger its normal cache preparation, but the extension deliberately returns no file URL to Revera.
 - Streaming through NullBeat's token-scoped `/search` and `/stream/{trackId}` endpoints.
 - Downloads through the same `/stream/{trackId}` resolver; NullBeat does not expose a separate download endpoint.
 - ISRC-first matching when the addon advertises the capability, followed by strict title + artist matching and a 10-second duration tolerance.
@@ -16,6 +17,10 @@ An Revera / Myspoti extension that uses one configured Eclipse-compatible NullBe
 - Queue pre-resolution: uses Revera's `audio.ahead` request for the next queue track (normally about 10 seconds after the current song starts) to resolve its NullBeat stream before playback. The extension log now records receipt of the ahead request immediately, before any network work, so a missing log means Revera did not invoke the ahead hook for that track. The ahead request gets one longer, bounded stream-resolution attempt; normal playback retains its two-attempt retry.
 - Bounded stream retry: retries one transient stream-resolution failure (network error, rate limit, selected server errors, or an unusable response) without retrying authentication or permanent client errors.
 - Cache visibility: uses NullBeat's `infotext` cache badge from search results and the stream response's `Torbox Cached`, `infohash`, or `cached` fields. Download file size is passed to Revera when NullBeat reports it.
+
+## Cache-only mode
+
+Enable **Cache-only mode** in the extension settings before starting downloads. For each track Revera asks this extension to download, NullBeat resolves the track and calls its normal `/stream/{trackId}` endpoint, which is the backend's existing cache-preparation path. The extension then returns no downloadable file, so Revera treats that track as unavailable from NullBeat. Turn the setting off again to download normally. This does not add a separate TorBox API integration and cannot guarantee that an entire playlist is queued: Revera controls how many per-track download hooks it invokes and whether it continues after an unavailable result. Actual cache completion remains controlled by NullBeat/TorBox.
 
 ## Playback statistics
 
