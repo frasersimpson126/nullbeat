@@ -273,15 +273,15 @@ function chooseArtistTitleCandidate(track, items) {
 
 function cleanTitleForMatch(value) {
   return normalize(value)
-    .replace(/\\b(?:feat|ft|featuring)\\b.*$/g, '')
-    .replace(/\\b(?:remaster(?:ed)?|radio edit|single version|album version|explicit|clean version|official audio|lyrics)\\b/g, '')
-    .replace(/\\s+/g, ' ')
+    .replace(/\b(?:feat|ft|featuring)\b.*$/g, '')
+    .replace(/\b(?:remaster(?:ed)?|radio edit|single version|album version|explicit|clean version|official audio|lyrics)\b/g, '')
+    .replace(/\s+/g, ' ')
     .trim();
 }
 
 function cleanArtistForMatch(value) {
   return normalize(value)
-    .replace(/\\b(?:feat|ft|featuring)\\b.*$/g, '')
+    .replace(/\b(?:feat|ft|featuring)\b.*$/g, '')
     .trim();
 }
 
