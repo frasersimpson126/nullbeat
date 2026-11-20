@@ -118,6 +118,29 @@ function requestJson(url, timeout) {
   }
 }
 
+function requestJsonWithRetry(url, timeout, label) {
+  var first;
+  try {
+    first = requestJson(url, timeout);
+  } catch (e) {
+    first = { status: 0, data: null, headers: {} };
+    myspoti.log('NullBeat ' + label + ' request error: ' + cleanText(e.message || e).substring(0, 120));
+  }
+  var status = Number(first.status) || 0;
+  var retryable = status === 0 || status === 408 || status === 425 ||
+    status === 500 || status === 502 || status === 503 || status === 504 ||
+    (status === 200 && !first.data);
+  if (!retryable) return first;
+
+  myspoti.log('NullBeat ' + label + ' request returned HTTP ' + status + '; retrying once.');
+  try {
+    return requestJson(url, Math.min(3500, Math.max(timeout || 1000, Math.round((timeout || 1000) * 1.5))));
+  } catch (e) {
+    myspoti.log('NullBeat ' + label + ' retry error: ' + cleanText(e.message || e).substring(0, 120));
+    return { status: 0, data: null, headers: {} };
+  }
+}
+
 function manifestUrl() {
   var url = configuredUrl();
   if (!url) throw new Error('Add your NullBeat manifest URL in extension settings.');
@@ -381,11 +404,11 @@ function resolveTrack(track, url, manifest, isDownload) {
   // fallback if search is slow or does not return the same catalogue entry.
   var query = cleanText((track.artist || '') + ' ' + (track.title || ''));
   if (query && resource(manifest, 'search')) {
-    var sr = requestJson(endpoint(url, '/search', {
+    var sr = requestJsonWithRetry(endpoint(url, '/search', {
       q: query,
       limit: isDownload ? 20 : 10,
       type: 'track'
-    }), isDownload ? 2200 : 1000);
+    }), isDownload ? 2200 : 1000, 'track search');
     if (sr.status === 200 && sr.data) {
       var items = trackArrays(sr.data);
       var match = chooseCandidate(track, items);
@@ -401,6 +424,11 @@ function resolveTrack(track, url, manifest, isDownload) {
           candidate: match
         };
       }
+      myspoti.log('NullBeat search returned ' + items.length + ' results but none matched ' +
+        cleanText(track.artist) + ' - ' + cleanText(track.title) + '.');
+    } else {
+      myspoti.log('NullBeat track search failed (HTTP ' + (Number(sr.status) || 0) + ') for ' +
+        cleanText(track.artist) + ' - ' + cleanText(track.title) + '.');
     }
   }
 
