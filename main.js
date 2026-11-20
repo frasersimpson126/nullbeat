@@ -331,6 +331,30 @@ function candidateDurationMatches(track, candidate, toleranceMs) {
   return Math.abs(wanted - found) <= (toleranceMs || 12000);
 }
 
+function tokenSimilarity(a, b) {
+  var left = normalize(a).split(' ').filter(function (v) { return !!v; });
+  var right = normalize(b).split(' ').filter(function (v) { return !!v; });
+  if (!left.length || !right.length) return 0;
+  var common = 0;
+  for (var i = 0; i < left.length; i++) {
+    if (right.indexOf(left[i]) >= 0) common++;
+  }
+  return common / Math.max(left.length, right.length);
+}
+
+function cleanedArtistSimilarity(track, candidate) {
+  var wanted = requestedArtists(track).map(cleanArtistForMatch).filter(function (v) { return !!v; });
+  var found = candidateArtists(candidate).map(cleanArtistForMatch).filter(function (v) { return !!v; });
+  var best = 0;
+  for (var i = 0; i < wanted.length; i++) {
+    for (var j = 0; j < found.length; j++) {
+      if (wanted[i] === found[j]) return 1;
+      best = Math.max(best, tokenSimilarity(wanted[i], found[j]));
+    }
+  }
+  return best;
+}
+
 function chooseExpandedCandidate(track, items) {
   var wantedTitle = cleanTitleForMatch(track && track.title);
   var wantedAlbum = normalize(track && track.album && (track.album.name || track.album));
@@ -338,24 +362,36 @@ function chooseExpandedCandidate(track, items) {
   for (var i = 0; i < items.length; i++) {
     var item = items[i];
     if (!item || !item.id) continue;
-    if (wantedTitle !== cleanTitleForMatch(item.title || item.name)) continue;
-    // A title-only result is not sufficient: require a matching artist and
-    // a plausible duration to avoid selecting a different recording.
-    if (!cleanedArtistMatches(track, item)) continue;
+    var foundTitle = cleanTitleForMatch(item.title || item.name);
+    var titleScore = tokenSimilarity(wantedTitle, foundTitle);
+    var exactTitle = wantedTitle && wantedTitle === foundTitle;
+    var artistScore = cleanedArtistSimilarity(track, item);
+    // Search-only fallbacks need stronger evidence than the normal exact
+    // matching path. Fuzzy titles require both a strong artist match and
+    // an available, close duration to prevent unrelated songs being picked.
+    if (!exactTitle && titleScore < 0.82) continue;
+    if (artistScore < 0.60) continue;
+    var wantedDuration = Number(track && track.durationMs) || 0;
+    var foundDuration = candidateDurationMs(item);
+    if (!exactTitle && (!wantedDuration || !foundDuration ||
+        Math.abs(wantedDuration - foundDuration) > 8000)) continue;
     if (!candidateDurationMatches(track, item, 12000)) continue;
-    matches.push(item);
+    matches.push({
+      item: item,
+      albumScore: wantedAlbum && candidateAlbum(item) === wantedAlbum ? 1 : 0,
+      titleScore: titleScore,
+      artistScore: artistScore,
+      durationDelta: wantedDuration && foundDuration ? Math.abs(wantedDuration - foundDuration) : 999999999
+    });
   }
   matches.sort(function (a, b) {
-    var aAlbum = wantedAlbum && candidateAlbum(a) === wantedAlbum ? 1 : 0;
-    var bAlbum = wantedAlbum && candidateAlbum(b) === wantedAlbum ? 1 : 0;
-    if (aAlbum !== bAlbum) return bAlbum - aAlbum;
-    var wantedDuration = Number(track && track.durationMs) || 0;
-    var aDelta = wantedDuration && candidateDurationMs(a) ? Math.abs(wantedDuration - candidateDurationMs(a)) : 999999999;
-    var bDelta = wantedDuration && candidateDurationMs(b) ? Math.abs(wantedDuration - candidateDurationMs(b)) : 999999999;
-    if (aDelta !== bDelta) return aDelta - bDelta;
-    return (candidateIsCached(b) ? 1 : 0) - (candidateIsCached(a) ? 1 : 0);
+    if (a.albumScore !== b.albumScore) return b.albumScore - a.albumScore;
+    if (a.titleScore !== b.titleScore) return b.titleScore - a.titleScore;
+    if (a.artistScore !== b.artistScore) return b.artistScore - a.artistScore;
+    if (a.durationDelta !== b.durationDelta) return a.durationDelta - b.durationDelta;
+    return (candidateIsCached(b.item) ? 1 : 0) - (candidateIsCached(a.item) ? 1 : 0);
   });
-  return matches.length ? matches[0] : null;
+  return matches.length ? matches[0].item : null;
 }
 
 function expandedSearchQueries(track) {
@@ -364,6 +400,7 @@ function expandedSearchQueries(track) {
   var queries = [];
   if (artist && title) queries.push(artist + ' ' + title);
   if (title) queries.push(title);
+  if (artist) queries.push(artist);
   return queries.filter(function (query, index, all) {
     return !!query && all.indexOf(query) === index;
   });
@@ -568,12 +605,12 @@ function resolveTrack(track, url, manifest, isDownload) {
         myspoti.log('NullBeat matched by cleaned artist + title.');
         return { id: String(match.id), isrcMatched: false, candidate: match };
       }
-      // Search expansion is deliberately bounded to two extra queries and
+      // Search expansion is deliberately bounded to three extra queries and
       // is only used after the primary search fails. Do not retry HTTP 429:
       // extra traffic during rate limiting would make the problem worse.
       var expandedQueries = expandedSearchQueries(track);
       var expandedItems = items.slice(0);
-      for (var qi = 0; qi < expandedQueries.length; qi++) {
+      for (var qi = 0; qi < expandedQueries.length && qi < 3; qi++) {
         if (normalize(expandedQueries[qi]) === normalize(query)) continue;
         var er = requestJson(endpoint(url, '/search', {
           q: expandedQueries[qi],
