@@ -533,7 +533,7 @@ function resolveStream(track, isDownload, isAhead) {
     return null;
   }
   if (sr.status === 429) {
-    if (feature('results')) return { outcome: 'rate-limited', retryAfterMs: 60000 };
+    if (feature('results')) return { outcome: 'rate-limited', retryAfterMs: 5000 };
     return null;
   }
   if (sr.status !== 200 || !sr.data || typeof sr.data.url !== 'string') return null;
