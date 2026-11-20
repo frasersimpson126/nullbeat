@@ -726,6 +726,17 @@ function resolveStream(track, isDownload, isAhead) {
         !/^https:\/\//i.test(cleanText(sr.data.url))));
     if (!retryable || attempt === maxAttempts - 1) break;
   }
+  if (isDownload) {
+    var responseType = sr.headers && (sr.headers['content-type'] || sr.headers['Content-Type']);
+    var responseLength = sr.headers && (sr.headers['content-length'] || sr.headers['Content-Length']);
+    downloadDiagnostic(track, 'Stream resolver HTTP ' + (Number(sr.status) || 0) +
+      ' after ' + (attempt + 1) + '/' + maxAttempts + ' attempt(s); JSON=' +
+      (sr.data ? 'present' : 'absent') + ', media URL=' +
+      (sr.data && sr.data.url ? 'present' : 'absent') +
+      ', response type=' + cleanText(responseType || 'unknown').substring(0, 60) +
+      ', response length=' + cleanText(responseLength || 'unknown').substring(0, 30) + '.');
+  }
+
   if (sr.status === 401 || sr.status === 403) {
     if (feature('results')) return { outcome: 'sign-in', detail: 'Check the NullBeat manifest URL and access token in settings.' };
     return null;
@@ -843,23 +854,35 @@ function audioAnswer(track) {
   }
 }
 
+function mediaUrlHost(value) {
+  var match = cleanText(value).match(/^https:\/\/([^\/?#]+)/i);
+  return match ? match[1].substring(0, 100) : '(unknown host)';
+}
+
 function downloadAnswer(track) {
+  var artist = cleanText(track && (track.artist || (track.artists && track.artists[0])));
+  var title = cleanText(track && track.title);
+  var label = ((artist ? artist + ' - ' : '') + (title || 'Unknown track')).substring(0, 100);
+  myspoti.log('NullBeat download hook entered [' + label + '].');
   try {
     var cacheOnly = myspoti.settings.get('cache_only') === true;
+    myspoti.log('NullBeat download mode [' + label + ']: ' + (cacheOnly ? 'cache-only' : 'normal') + '.');
     var result = resolveStream(track, true);
-    if (!result) return null;
+    if (!result) {
+      downloadDiagnostic(track, 'Download hook returning no file: stream resolution returned no result.');
+      return null;
+    }
     if (result.outcome) {
-      downloadDiagnostic(track, 'Resolver returned outcome=' + cleanText(result.outcome) + '.');
+      downloadDiagnostic(track, 'Download hook returning resolver outcome=' + cleanText(result.outcome) + '.');
       return result;
     }
     if (cacheOnly) {
       // Resolving the stream asks NullBeat to prepare/cache the track. Do not
       // hand the playable URL to Revera in cache-only mode.
-      myspoti.log('NullBeat cache-only: requested cache preparation for ' +
-        cleanText(track && track.artist) + ' - ' + cleanText(track && track.title) + '.');
+      downloadDiagnostic(track, 'Cache-only: cache request made; no file handed to Revera.');
       return null;
     }
-    return [{
+    var files = [{
       url: result.url,
       format: result.format,
       bitDepth: result.bitDepth,
@@ -867,7 +890,15 @@ function downloadAnswer(track) {
       sizeHint: result.sizeHint,
       isrcMatched: result.isrcMatched
     }];
+    downloadDiagnostic(track, 'Returning 1 file to Revera: host=' + mediaUrlHost(result.url) +
+      ', format=' + result.format + ', sizeHint=' +
+      (result.sizeHint ? result.sizeHint + ' bytes' : 'unknown') +
+      ', bitDepth=' + (result.bitDepth || 'unknown') +
+      ', sampleRate=' + (result.sampleRate || 'unknown') +
+      '. Revera transfer happens outside the extension; transfer result is not exposed to this hook.');
+    return files;
   } catch (e) {
+    downloadDiagnostic(track, 'Download hook threw: ' + cleanText(e.message || e).substring(0, 140) + '.');
     myspoti.log('NullBeat download error: ' + cleanText(e.message || e).substring(0, 160));
     if (feature('results')) return { outcome: 'network', detail: 'Could not reach the configured NullBeat addon.' };
     return null;
