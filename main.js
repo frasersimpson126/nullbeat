@@ -252,18 +252,25 @@ function httpBatchJson(urls, timeout) {
 }
 
 function queueTrack(item) {
-  if (!item || !item.uri || !item.name) return null;
+  // Revera queue events use the standard hook Track shape:
+  // { id, uri, title, artist, artists, album, durationMs, isrc? }.
+  if (!item || !item.uri) return null;
+  var title = cleanText(item.title || item.name);
+  if (!title) return null;
   var artists = Array.isArray(item.artists) ? item.artists : [];
   var names = artists.map(function (artist) {
     return cleanText(artist && (artist.name || artist));
   }).filter(function (name) { return !!name; });
-  if (!names.length) return null;
+  var primaryArtist = cleanText(item.artist) || (names.length ? names[0] : '');
+  if (!primaryArtist) return null;
+  if (!names.length) names = [primaryArtist];
   return {
     uri: cleanText(item.uri),
-    title: cleanText(item.name),
-    artist: names[0],
+    title: title,
+    artist: primaryArtist,
     artists: names,
-    durationMs: Number(item.durationMs) || 0
+    durationMs: Number(item.durationMs) || 0,
+    isrc: cleanText(item.isrc)
   };
 }
 
@@ -272,7 +279,10 @@ function queueTrack(item) {
 // short network timeouts, and no serial fallback on older hosts.
 function prepareSpotifyQueue(nextItems) {
   var url;
-  try { url = manifestUrl(); } catch (e) { return; }
+  try { url = manifestUrl(); } catch (e) {
+    myspoti.log('NullBeat queue preparation skipped: configure the addon URL first.');
+    return;
+  }
   if (!feature('http.all')) {
     myspoti.log('NullBeat automatic queue preparation needs Revera http.all; ahead-of-time playback fallback remains active.');
     return;
@@ -281,6 +291,7 @@ function prepareSpotifyQueue(nextItems) {
   var tracks = [];
   var seen = {};
   var rawItems = Array.isArray(nextItems) ? nextItems : [];
+  myspoti.log('NullBeat queue update received: ' + rawItems.length + ' upcoming entries.');
   for (var i = 0; i < rawItems.length && tracks.length < 5; i++) {
     var t = queueTrack(rawItems[i]);
     if (!t || seen[t.uri]) continue;
@@ -288,7 +299,11 @@ function prepareSpotifyQueue(nextItems) {
     tracks.push(t);
   }
   preparedQueueMatches = {};
-  if (!tracks.length) return;
+  if (!tracks.length) {
+    myspoti.log('NullBeat queue preparation found no usable tracks (expected uri, title and artist).');
+    return;
+  }
+  myspoti.log('NullBeat queue preparation accepted ' + tracks.length + ' tracks.');
 
   var searchUrls = tracks.map(function (track) {
     return endpoint(url, '/search', {
@@ -315,6 +330,11 @@ function prepareSpotifyQueue(nextItems) {
       candidate: candidate
     };
     matched.push({ track: tracks[j], id: String(candidate.id) });
+  }
+
+  if (!matched.length) {
+    myspoti.log('NullBeat queue preparation matched 0/' + tracks.length + ' tracks; no cache requests sent.');
+    return;
   }
 
   // Calling the normal stream endpoint starts the backend's cache path.
