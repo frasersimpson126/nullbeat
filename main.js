@@ -236,24 +236,20 @@ function candidateIsCached(candidate) {
   return !!candidate.cached || /cached|cache hit/i.test(text) || !!candidate.infohash;
 }
 
-function chooseCandidate(track, items) {
-  var exactIsrc = [];
-  var exactIdentity = [];
-  var wantedIsrc = cleanText(track.isrc).toUpperCase();
+function chooseIsrcCandidate(track, items) {
+  var wantedIsrc = cleanText(track && track.isrc).toUpperCase();
+  if (!wantedIsrc) return null;
+  var matches = [];
   for (var i = 0; i < items.length; i++) {
     var item = items[i];
-    if (!item || !item.id) continue;
-    if (wantedIsrc && cleanText(item.isrc).toUpperCase() === wantedIsrc) {
-      exactIsrc.push(item);
-    } else if (sameRecording(track, item)) {
-      exactIdentity.push(item);
+    if (item && item.id && cleanText(item.isrc).toUpperCase() === wantedIsrc) {
+      matches.push(item);
     }
   }
-  var pool = exactIsrc.length ? exactIsrc : exactIdentity;
-  for (var j = 0; j < pool.length; j++) {
-    if (candidateIsCached(pool[j])) return pool[j];
+  for (var j = 0; j < matches.length; j++) {
+    if (candidateIsCached(matches[j])) return matches[j];
   }
-  return pool.length ? pool[0] : null;
+  return matches.length ? matches[0] : null;
 }
 
 function sameArtistAndTitle(track, candidate) {
@@ -268,6 +264,47 @@ function chooseArtistTitleCandidate(track, items) {
   var matches = [];
   for (var i = 0; i < items.length; i++) {
     if (sameArtistAndTitle(track, items[i])) matches.push(items[i]);
+  }
+  for (var j = 0; j < matches.length; j++) {
+    if (candidateIsCached(matches[j])) return matches[j];
+  }
+  return matches.length ? matches[0] : null;
+}
+
+function cleanTitleForMatch(value) {
+  return normalize(value)
+    .replace(/\\b(?:feat|ft|featuring)\\b.*$/g, '')
+    .replace(/\\b(?:remaster(?:ed)?|radio edit|single version|album version|explicit|clean version|official audio|lyrics)\\b/g, '')
+    .replace(/\\s+/g, ' ')
+    .trim();
+}
+
+function cleanArtistForMatch(value) {
+  return normalize(value)
+    .replace(/\\b(?:feat|ft|featuring)\\b.*$/g, '')
+    .trim();
+}
+
+function cleanedArtistMatches(track, candidate) {
+  var wanted = requestedArtists(track).map(cleanArtistForMatch).filter(function (v) { return !!v; });
+  var found = candidateArtists(candidate).map(cleanArtistForMatch).filter(function (v) { return !!v; });
+  for (var i = 0; i < wanted.length; i++) {
+    for (var j = 0; j < found.length; j++) {
+      if (wanted[i] === found[j] || wanted[i].indexOf(found[j]) === 0 || found[j].indexOf(wanted[i]) === 0) return true;
+    }
+  }
+  return false;
+}
+
+function chooseCleanedCandidate(track, items) {
+  var wantedTitle = cleanTitleForMatch(track && track.title);
+  if (!wantedTitle) return null;
+  var matches = [];
+  for (var i = 0; i < items.length; i++) {
+    var item = items[i];
+    if (!item || !item.id) continue;
+    var foundTitle = cleanTitleForMatch(item.title || item.name);
+    if (wantedTitle === foundTitle && cleanedArtistMatches(track, item)) matches.push(item);
   }
   for (var j = 0; j < matches.length; j++) {
     if (candidateIsCached(matches[j])) return matches[j];
@@ -385,8 +422,9 @@ function prepareSpotifyQueue(nextItems) {
   for (var j = 0; j < tracks.length; j++) {
     var response = searchResults[j];
     var items = response && response.status === 200 ? trackArrays(response.data) : [];
-    var candidate = chooseCandidate(tracks[j], items);
+    var candidate = chooseIsrcCandidate(tracks[j], items);
     if (!candidate) candidate = chooseArtistTitleCandidate(tracks[j], items);
+    if (!candidate) candidate = chooseCleanedCandidate(tracks[j], items);
     if (!candidate) continue;
     preparedQueueMatches[tracks[j].uri] = {
       id: String(candidate.id),
@@ -452,18 +490,26 @@ function resolveTrack(track, url, manifest, isDownload) {
     }), isDownload ? 2200 : 1000, 'track search');
     if (sr.status === 200 && sr.data) {
       var items = trackArrays(sr.data);
-      var match = chooseCandidate(track, items);
-      // If exact ISRC/title/artist/duration matching fails, accept an exact
-      // artist + title match as a fallback. This tolerates duration metadata
-      // differences and alternate catalogue entries while preserving exact
-      // matches as the first choice.
-      if (!match) match = chooseArtistTitleCandidate(track, items);
+      // Matching priority: exact ISRC, ISRC resolver ID, exact artist + title,
+      // then cleaned artist + title. Never let a weaker title match override ISRC.
+      var match = chooseIsrcCandidate(track, items);
       if (match) {
-        return {
-          id: String(match.id),
-          isrcMatched: !!(isrc && cleanText(match.isrc).toUpperCase() === isrc.toUpperCase()),
-          candidate: match
-        };
+        myspoti.log('NullBeat matched by ISRC.');
+        return { id: String(match.id), isrcMatched: true, candidate: match };
+      }
+      if (resolvedIsrcId) {
+        myspoti.log('NullBeat resolved track by ISRC endpoint.');
+        return { id: resolvedIsrcId, isrcMatched: true, candidate: null };
+      }
+      match = chooseArtistTitleCandidate(track, items);
+      if (match) {
+        myspoti.log('NullBeat matched by exact artist + title.');
+        return { id: String(match.id), isrcMatched: false, candidate: match };
+      }
+      match = chooseCleanedCandidate(track, items);
+      if (match) {
+        myspoti.log('NullBeat matched by cleaned artist + title.');
+        return { id: String(match.id), isrcMatched: false, candidate: match };
       }
       myspoti.log('NullBeat search returned ' + items.length + ' results but none matched ' +
         cleanText(track.artist) + ' - ' + cleanText(track.title) + '.');
