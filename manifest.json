@@ -37,7 +37,7 @@
     },
     {
       "name": "playback.events",
-      "why": "Records playback origin for diagnostics and cache visibility."
+      "why": "Tracks playback and receives upcoming queue updates to prepare the next five songs."
     },
     {
       "name": "notify",
