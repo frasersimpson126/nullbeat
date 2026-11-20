@@ -312,6 +312,63 @@ function chooseCleanedCandidate(track, items) {
   return matches.length ? matches[0] : null;
 }
 
+function candidateDurationMs(candidate) {
+  var duration = Number(candidate && (candidate.durationMs || candidate.duration_ms || 0));
+  if (!duration && Number(candidate && candidate.duration || 0)) duration = Number(candidate.duration) * 1000;
+  return duration;
+}
+
+function candidateAlbum(candidate) {
+  var album = candidate && candidate.album;
+  if (album && typeof album === 'object') album = album.name || album.title;
+  return normalize(album);
+}
+
+function candidateDurationMatches(track, candidate, toleranceMs) {
+  var wanted = Number(track && track.durationMs) || 0;
+  var found = candidateDurationMs(candidate);
+  if (!wanted || !found) return true;
+  return Math.abs(wanted - found) <= (toleranceMs || 12000);
+}
+
+function chooseExpandedCandidate(track, items) {
+  var wantedTitle = cleanTitleForMatch(track && track.title);
+  var wantedAlbum = normalize(track && track.album && (track.album.name || track.album));
+  var matches = [];
+  for (var i = 0; i < items.length; i++) {
+    var item = items[i];
+    if (!item || !item.id) continue;
+    if (wantedTitle !== cleanTitleForMatch(item.title || item.name)) continue;
+    // A title-only result is not sufficient: require a matching artist and
+    // a plausible duration to avoid selecting a different recording.
+    if (!cleanedArtistMatches(track, item)) continue;
+    if (!candidateDurationMatches(track, item, 12000)) continue;
+    matches.push(item);
+  }
+  matches.sort(function (a, b) {
+    var aAlbum = wantedAlbum && candidateAlbum(a) === wantedAlbum ? 1 : 0;
+    var bAlbum = wantedAlbum && candidateAlbum(b) === wantedAlbum ? 1 : 0;
+    if (aAlbum !== bAlbum) return bAlbum - aAlbum;
+    var wantedDuration = Number(track && track.durationMs) || 0;
+    var aDelta = wantedDuration && candidateDurationMs(a) ? Math.abs(wantedDuration - candidateDurationMs(a)) : 999999999;
+    var bDelta = wantedDuration && candidateDurationMs(b) ? Math.abs(wantedDuration - candidateDurationMs(b)) : 999999999;
+    if (aDelta !== bDelta) return aDelta - bDelta;
+    return (candidateIsCached(b) ? 1 : 0) - (candidateIsCached(a) ? 1 : 0);
+  });
+  return matches.length ? matches[0] : null;
+}
+
+function expandedSearchQueries(track) {
+  var artist = cleanArtistForMatch(track && (track.artist || (track.artists && track.artists[0])));
+  var title = cleanTitleForMatch(track && track.title);
+  var queries = [];
+  if (artist && title) queries.push(artist + ' ' + title);
+  if (title) queries.push(title);
+  return queries.filter(function (query, index, all) {
+    return !!query && all.indexOf(query) === index;
+  });
+}
+
 function trackArrays(data) {
   if (!data || typeof data !== 'object') return [];
   if (Array.isArray(data)) return data;
@@ -511,7 +568,51 @@ function resolveTrack(track, url, manifest, isDownload) {
         myspoti.log('NullBeat matched by cleaned artist + title.');
         return { id: String(match.id), isrcMatched: false, candidate: match };
       }
-      myspoti.log('NullBeat search returned ' + items.length + ' results but none matched ' +
+      // Search expansion is deliberately bounded to two extra queries and
+      // is only used after the primary search fails. Do not retry HTTP 429:
+      // extra traffic during rate limiting would make the problem worse.
+      var expandedQueries = expandedSearchQueries(track);
+      var expandedItems = items.slice(0);
+      for (var qi = 0; qi < expandedQueries.length; qi++) {
+        if (normalize(expandedQueries[qi]) === normalize(query)) continue;
+        var er = requestJson(endpoint(url, '/search', {
+          q: expandedQueries[qi],
+          limit: isDownload ? 20 : 10,
+          type: 'track'
+        }), isDownload ? 1300 : 850);
+        if (er.status === 429) {
+          myspoti.log('NullBeat fallback search stopped: HTTP 429 rate limit.');
+          break;
+        }
+        if (er.status !== 200 || !er.data) {
+          myspoti.log('NullBeat fallback search failed (HTTP ' + (Number(er.status) || 0) + ').');
+          continue;
+        }
+        var extraItems = trackArrays(er.data);
+        for (var ei = 0; ei < extraItems.length; ei++) {
+          var duplicate = false;
+          for (var di = 0; di < expandedItems.length; di++) {
+            if (cleanText(expandedItems[di].id) === cleanText(extraItems[ei] && extraItems[ei].id)) {
+              duplicate = true;
+              break;
+            }
+          }
+          if (!duplicate && extraItems[ei]) expandedItems.push(extraItems[ei]);
+        }
+        match = chooseIsrcCandidate(track, expandedItems);
+        if (!match) match = chooseArtistTitleCandidate(track, expandedItems);
+        if (!match) match = chooseCleanedCandidate(track, expandedItems);
+        if (!match) match = chooseExpandedCandidate(track, expandedItems);
+        if (match) {
+          myspoti.log('NullBeat matched using expanded search query: ' + expandedQueries[qi].substring(0, 70) + '.');
+          return {
+            id: String(match.id),
+            isrcMatched: !!(isrc && cleanText(match.isrc).toUpperCase() === isrc.toUpperCase()),
+            candidate: match
+          };
+        }
+      }
+      myspoti.log('NullBeat search returned ' + expandedItems.length + ' combined results but none matched ' +
         cleanText(track.artist) + ' - ' + cleanText(track.title) + '.');
     } else {
       myspoti.log('NullBeat track search failed (HTTP ' + (Number(sr.status) || 0) + ') for ' +
