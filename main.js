@@ -730,7 +730,7 @@ function resolveStream(track, isDownload, isAhead) {
     var responseType = sr.headers && (sr.headers['content-type'] || sr.headers['Content-Type']);
     var responseLength = sr.headers && (sr.headers['content-length'] || sr.headers['Content-Length']);
     downloadDiagnostic(track, 'Stream resolver HTTP ' + (Number(sr.status) || 0) +
-      ' after ' + (attempt + 1) + '/' + maxAttempts + ' attempt(s); JSON=' +
+      ' after ' + Math.min(attempt + 1, maxAttempts) + '/' + maxAttempts + ' attempt(s); JSON=' +
       (sr.data ? 'present' : 'absent') + ', media URL=' +
       (sr.data && sr.data.url ? 'present' : 'absent') +
       ', response type=' + cleanText(responseType || 'unknown').substring(0, 60) +
