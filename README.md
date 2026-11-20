@@ -8,7 +8,7 @@ An Revera / Myspoti extension that uses one configured Eclipse-compatible NullBe
 - Optional **Cache-only mode**: download requests are resolved through NullBeat to trigger its normal cache preparation, but the extension deliberately returns no file URL to Revera.
 - Streaming through NullBeat's token-scoped `/search` and `/stream/{trackId}` endpoints.
 - Downloads through the same `/stream/{trackId}` resolver; NullBeat does not expose a separate download endpoint.
-- ISRC-first matching when the addon advertises the capability, followed by strict title + artist matching and a 10-second duration tolerance.
+- Three-stage matching: exact ISRC first (including the addon's ISRC resolver), exact artist + title second, then cleaned artist + title as a fallback that removes featuring/version metadata and common title suffixes. Exact matches take priority over cleaned matches.
 - Direct stream URLs are used when present in search results only if they are still returned by the stream endpoint; the stream endpoint remains the final resolver.
 - Connection test checks the manifest and sample search endpoint.
 - Playback origin diagnostics distinguish NullBeat streams from downloaded tracks.
@@ -65,5 +65,5 @@ NullBeat documents that a new cache fill can take around 15–20 seconds. Revera
 - Supports direct HTTPS audio URLs in FLAC, M4A/MP4, AAC (mapped to M4A), and MP3 formats. Dolby Atmos is passed through as M4A with its reported codec metadata.
 - HLS/DASH manifests and redirect-only stream URLs are not passed through. NullBeat's public `/stream` endpoint is expected to return a JSON object containing a direct `url`.
 - Playback inspects up to five results and downloads up to ten, preferring cached results only among exact ISRC or strict title/artist matches. Normal playback makes at most two bounded stream-resolution attempts; an ahead-of-time queue request makes one longer attempt within the 15-second audio hook budget.
-- Matching is deliberately strict to avoid playing a different recording.
+- Matching prioritises exact ISRC and exact artist + title results. A final cleaned artist + title fallback tolerates featuring credits and common release/version suffixes; it remains conservative and should be reviewed if it selects an unexpected recording.
 - Spotify scrobbling is left to Revera's built-in Spotify mirroring option; this extension does not implement a second scrobbling path.
