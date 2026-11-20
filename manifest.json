@@ -37,7 +37,7 @@
     },
     {
       "name": "playback.events",
-      "why": "Tracks playback and receives upcoming queue updates to prepare the next five songs."
+      "why": "Tracks playback and prepares upcoming queue entries."
     },
     {
       "name": "notify",
