@@ -495,13 +495,27 @@ function resolveTrack(track, url, manifest, isDownload) {
   return null;
 }
 
+function downloadDiagnostic(track, reason) {
+  var artist = cleanText(track && (track.artist || (track.artists && track.artists[0])));
+  var title = cleanText(track && track.title);
+  var label = (artist ? artist + ' - ' : '') + (title || 'Unknown track');
+  myspoti.log('NullBeat download diagnostic [' + label.substring(0, 100) + ']: ' +
+    cleanText(reason).substring(0, 180));
+}
+
 function resolveStream(track, isDownload, isAhead) {
   var url = manifestUrl();
   var manifest = getManifest(url, false);
-  if (!resource(manifest, 'stream')) return null;
+  if (!resource(manifest, 'stream')) {
+    if (isDownload) downloadDiagnostic(track, 'Addon manifest does not advertise the stream resource.');
+    return null;
+  }
 
   var match = takePreparedQueueMatch(track) || resolveTrack(track, url, manifest, isDownload);
-  if (!match) return null;
+  if (!match) {
+    if (isDownload) downloadDiagnostic(track, 'No matching NullBeat catalogue track was found.');
+    return null;
+  }
 
   var streamPath = '/stream/' + encodeURIComponent(match.id);
   // NullBeat has one stream resolver for both playback and downloads. The quality
@@ -536,10 +550,19 @@ function resolveStream(track, isDownload, isAhead) {
     if (feature('results')) return { outcome: 'rate-limited', retryAfterMs: 5000 };
     return null;
   }
-  if (sr.status !== 200 || !sr.data || typeof sr.data.url !== 'string') return null;
+  if (sr.status !== 200 || !sr.data || typeof sr.data.url !== 'string') {
+    if (isDownload) {
+      downloadDiagnostic(track, 'Stream endpoint failed: HTTP ' + (Number(sr.status) || 0) +
+        ', attempts=' + maxAttempts + ', response=' + (sr.data ? 'JSON without a URL' : 'no JSON response') + '.');
+    }
+    return null;
+  }
 
   var mediaUrl = cleanText(sr.data.url);
-  if (!/^https:\/\//i.test(mediaUrl)) return null;
+  if (!/^https:\/\//i.test(mediaUrl)) {
+    if (isDownload) downloadDiagnostic(track, 'Stream endpoint returned a media URL that is not HTTPS.');
+    return null;
+  }
 
   var format = cleanText(sr.data.format).toLowerCase();
   if (!format) {
@@ -548,7 +571,15 @@ function resolveStream(track, isDownload, isAhead) {
     else if (/\.mp3(?:[?#]|$)/i.test(mediaUrl)) format = 'mp3';
   }
   if (format === 'aac' || format === 'mp4') format = 'm4a';
-  if (format !== 'flac' && format !== 'm4a' && format !== 'mp3') return null;
+  if (format !== 'flac' && format !== 'm4a' && format !== 'mp3') {
+    if (isDownload) {
+      downloadDiagnostic(track, 'Unsupported or missing format: format=' +
+        cleanText(sr.data.format || '(empty)') + ', mimeType=' +
+        cleanText(sr.data.mimeType || sr.data.contentType || '(not supplied)') +
+        ', codec=' + cleanText(sr.data.codec || '(not supplied)') + '.');
+    }
+    return null;
+  }
 
   var title = cleanText(sr.data.title);
   var cacheText = cleanText(match.candidate && match.candidate.infotext);
@@ -563,6 +594,12 @@ function resolveStream(track, isDownload, isAhead) {
     expiresInMs = Math.max(0, Number(sr.data.expiresAt) * 1000 - Date.now());
   } else if (Number(sr.data.expiresInMs) >= 0 && sr.data.expiresInMs !== undefined) {
     expiresInMs = Number(sr.data.expiresInMs);
+  }
+
+  if (isDownload) {
+    downloadDiagnostic(track, 'Resolved successfully: format=' + format +
+      ', cache=' + (cached ? 'cached' : 'not marked cached') +
+      ', expiry=' + (expiresInMs === undefined ? 'unknown' : expiresInMs + 'ms') + '.');
   }
 
   return {
@@ -627,7 +664,10 @@ function downloadAnswer(track) {
     var cacheOnly = myspoti.settings.get('cache_only') === true;
     var result = resolveStream(track, true);
     if (!result) return null;
-    if (result.outcome) return result;
+    if (result.outcome) {
+      downloadDiagnostic(track, 'Resolver returned outcome=' + cleanText(result.outcome) + '.');
+      return result;
+    }
     if (cacheOnly) {
       // Resolving the stream asks NullBeat to prepare/cache the track. Do not
       // hand the playable URL to Revera in cache-only mode.
