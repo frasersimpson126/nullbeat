@@ -19,6 +19,7 @@ function emptyStats() {
     plays: 0,
     streamPlays: 0,
     downloadPlays: 0,
+    downloadRequests: 0,
     completed: 0,
     skipped: 0,
     playedMs: 0,
@@ -62,8 +63,9 @@ function formatPlayTime(ms) {
 function showStats() {
   var s = getStats();
   var summary = 'NullBeat stats: ' + s.plays + ' plays · ' + s.streamPlays +
-    ' streams · ' + s.downloadPlays + ' downloads · ' + s.completed +
-    ' completed · ' + s.skipped + ' skipped · ' + formatPlayTime(s.playedMs) + ' listened.';
+    ' streams · ' + s.downloadPlays + ' downloaded plays · ' + s.downloadRequests +
+    ' download hand-offs · ' + s.completed + ' completed · ' + s.skipped +
+    ' skipped · ' + formatPlayTime(s.playedMs) + ' listened.';
   myspoti.notify(summary.substring(0, 200));
   myspoti.log('Playback statistics: ' + JSON.stringify(s));
 }
@@ -888,12 +890,17 @@ function downloadAnswer(track) {
       sizeHint: result.sizeHint,
       isrcMatched: result.isrcMatched
     }];
+    // Count only after a valid file descriptor is ready to hand back to Revera.
+    // The host performs the transfer after this hook, so completion is not observable here.
+    var stats = getStats();
+    stats.downloadRequests += 1;
+    saveStats();
     downloadDiagnostic(track, 'Returning 1 file to Revera: host=' + mediaUrlHost(result.url) +
       ', format=' + result.format + ', sizeHint=' +
       (result.sizeHint ? result.sizeHint + ' bytes' : 'unknown') +
       ', bitDepth=' + (result.bitDepth || 'unknown') +
       ', sampleRate=' + (result.sampleRate || 'unknown') +
-      '. Revera transfer happens outside the extension; transfer result is not exposed to this hook.');
+      '. Counted one download hand-off; transfer completion is not exposed to this hook.');
     return files;
   } catch (e) {
     downloadDiagnostic(track, 'Download hook threw: ' + cleanText(e.message || e).substring(0, 140) + '.');
@@ -926,7 +933,12 @@ myspoti.on('queue', function (event) {
 });
 
 myspoti.on('setting', function (event) {
-  if (!event || event.key !== 'test_connection' || !event.pressed) return;
+  if (!event || !event.pressed) return;
+  if (event.key === 'rate_nullbeat') {
+    myspoti.notify('Rate NullBeat with 👍 or 👎: github.com/frasersimpson126/nullbeat/issues/2');
+    return;
+  }
+  if (event.key !== 'test_connection') return;
   try {
     var url = manifestUrl();
     var manifest = getManifest(url, true);
