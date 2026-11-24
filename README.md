@@ -12,7 +12,8 @@ An Revera / Myspoti extension that uses one configured Eclipse-compatible NullBe
 - Connection test checks the manifest and sample search endpoint.
 - Playback origin diagnostics distinguish NullBeat streams from downloaded tracks.
 - Download diagnostics log when Revera invokes the download hook, whether NullBeat resolves a media URL, the resolver HTTP status and response metadata, and whether one file descriptor is handed back to Revera. Media URLs and token paths are never logged. Revera performs the actual file transfer outside the extension, so transfer progress, HTTP status and received bytes cannot be observed from this extension hook.
-- Persistent playback statistics: counts all starts, NullBeat streams, NullBeat downloads, completed tracks, skips, and listening time. Statistics survive app restarts and can be viewed or reset from extension settings.
+- Persistent playback statistics: counts all starts, NullBeat streams, downloaded-track plays, successful download hand-offs to Revera, completed tracks, skips, and listening time. Statistics survive app restarts and can be viewed or reset from extension settings.
+- Rating shortcut: the **Rate NullBeat** setting opens the GitHub Ratings issue, where users can leave a 👍 or 👎 reaction.
 - Cache-aware matching: playback inspects up to five search results and prefers a cached exact ISRC match, then a cached strict title/artist match. Downloads inspect up to ten results. Uncached exact matches remain a fallback.
 - Configurable automatic queue preparation: listens for Revera's `queue` event and processes the default next track plus 0–4 additional upcoming tracks, controlled by **Extra caching** in settings. It reads Revera's standard `title`, `artist`, `artists`, `durationMs` and `uri` fields, matches them against NullBeat in parallel batches, and calls `/stream/{trackId}` to trigger the backend's normal preparation/cache path. It retains only matched track IDs in memory, not short-lived media URLs. The existing `audio.ahead` path consumes those matches when playback approaches; if a track was not prepared or the match cache is unavailable, normal resolution remains the fallback.
 - One-track-ahead fallback: Revera's `audio.ahead` request for the next queue track (normally about 10 seconds after the current song starts) still resolves the stream before playback when no manual queue preparation was run. The ahead request gets one longer, bounded stream-resolution attempt; normal playback retains its two-attempt retry.
@@ -25,7 +26,9 @@ An Revera / Myspoti extension that uses one configured Eclipse-compatible NullBe
 
 Statistics are stored locally using Revera's extension storage and persist across app restarts. A play is counted when playback starts; stream and download counts are attributed only when Revera reports this extension as the provider. Completed tracks count when Revera reports a finished end event, skips count on skip events, and listening time uses Revera's `playedMs` value (which excludes pauses and seeks). Other playback sources are excluded. Use the two settings buttons to view or reset the counters. Resetting is permanent.
 
-These figures describe playback events observed by Revera; they are not server-side request totals or proof that a track was fully cached.
+The download hand-off counter increments only when this extension has resolved a media URL and returned a valid file descriptor to Revera. Revera performs the transfer after the hook returns, so the extension cannot observe whether the file transfer later completes. Downloaded-track plays are counted separately when Revera reports playback from a NullBeat download.
+
+These figures describe events observed by Revera; they are not server-side request totals or proof that a track was fully cached.
 
 ## Quality
 
