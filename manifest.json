@@ -75,7 +75,13 @@
       "key": "show_stats",
       "type": "button",
       "label": "View playback statistics",
-      "description": "Shows total plays, NullBeat streams and downloads, completed tracks, skips and listening time."
+      "description": "Shows total plays, streams, downloaded-track plays, download hand-offs, completions, skips and listening time."
+    },
+    {
+      "key": "rate_nullbeat",
+      "type": "button",
+      "label": "Rate NullBeat",
+      "description": "Leave a thumbs up or down on the GitHub Ratings issue."
     },
     {
       "key": "reset_stats",
@@ -92,5 +98,5 @@
       "Press Test NullBeat connection, then play or download a track."
     ]
   },
-  "changelog": "2.0.0: Major release. Remove cache-only mode; simplify downloads to always return resolved files. Keep Extra caching configurable from 0–4."
+  "changelog": "2.1.0: Add a persistent download hand-off counter and a GitHub thumbs-up/down rating link. Download transfer completion remains controlled by Orpheon."
 }
