@@ -934,10 +934,6 @@ myspoti.on('queue', function (event) {
 
 myspoti.on('setting', function (event) {
   if (!event || !event.pressed) return;
-  if (event.key === 'rate_nullbeat') {
-    myspoti.notify('Rate NullBeat with 👍 or 👎: github.com/frasersimpson126/nullbeat/issues/2');
-    return;
-  }
   if (event.key !== 'test_connection') return;
   try {
     var url = manifestUrl();
