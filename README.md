@@ -1,5 +1,7 @@
 # NullBeat for Revera
 
+[![Downloads](https://img.shields.io/github/downloads/frasersimpson126/nullbeat/total?label=downloads)](https://github.com/frasersimpson126/nullbeat/releases)
+
 An Revera / Myspoti extension that uses one configured Eclipse-compatible NullBeat addon for streaming and downloads.
 
 ## Features
