@@ -2,8 +2,8 @@ name: Release extension
 
 on:
   push:
-    tags:
-      - "v*"
+    branches:
+      - "release/*"
 
 permissions:
   contents: write
@@ -14,12 +14,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate release tag
+      - name: Read version from manifest
+        id: version
         shell: bash
         run: |
           VERSION="$(python3 -c 'import json; print(json.load(open("manifest.json"))["version"])')"
-          TAG="${GITHUB_REF_NAME#v}"
-          test "$TAG" = "$VERSION" || { echo "Tag $TAG does not match manifest version $VERSION"; exit 1; }
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Package extension
         run: zip -j extension.zip manifest.json main.js icon.png LICENSE README.md
@@ -27,4 +27,7 @@ jobs:
       - name: Publish release asset
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" extension.zip --title "$GITHUB_REF_NAME" --generate-notes --verify-tag
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" extension.zip \
+            --title "${{ steps.version.outputs.tag }}" \
+            --generate-notes --target "$GITHUB_SHA"
